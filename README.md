@@ -103,6 +103,10 @@ python -I bridge/install_hooks.py --remove
 
 This removes only the bridge hooks. Your other hooks and settings stay as they are.
 
+## License
+
+[MIT](LICENSE). The fonts in the app are under the SIL Open Font License 1.1; see [licenses/](licenses/).
+
 ## Planned
 
 - Access away from home Wi-Fi, through a private network (for example Tailscale) or a protected tunnel.
