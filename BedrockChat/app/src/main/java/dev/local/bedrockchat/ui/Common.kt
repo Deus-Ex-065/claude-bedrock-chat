@@ -42,33 +42,45 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
-/** The app's own mark: a four-point sparkle. */
+/**
+ * The app's own mark: three stacked rock layers (strata), short on top and widest at the bottom.
+ * [layerAlpha] sets the opacity of each layer, from the top. The working animation uses it.
+ */
 @Composable
-fun Spark(modifier: Modifier = Modifier, color: Color = AppTheme.colors.accent) {
+fun Mark(
+    modifier: Modifier = Modifier,
+    color: Color = AppTheme.colors.accent,
+    layerAlpha: (Int) -> Float = { 1f },
+) {
     Canvas(modifier) {
         val w = size.width
         val h = size.height
-        val c = Offset(w / 2, h / 2)
-        val path = Path().apply {
-            moveTo(c.x, 0f)
-            cubicTo(c.x + w * 0.05f, h * 0.30f, w * 0.70f, c.y - h * 0.05f, w, c.y)
-            cubicTo(w * 0.70f, c.y + h * 0.05f, c.x + w * 0.05f, h * 0.70f, c.x, h)
-            cubicTo(c.x - w * 0.05f, h * 0.70f, w * 0.30f, c.y + h * 0.05f, 0f, c.y)
-            cubicTo(w * 0.30f, c.y - h * 0.05f, c.x - w * 0.05f, h * 0.30f, c.x, 0f)
-            close()
+        val bar = h * 0.22f
+        val gap = h * 0.11f
+        val top = (h - 3 * bar - 2 * gap) / 2
+        listOf(0.5f, 0.75f, 1f).forEachIndexed { i, widthPart ->
+            val bw = w * widthPart
+            drawRoundRect(
+                color = color.copy(alpha = color.alpha * layerAlpha(i)),
+                topLeft = Offset((w - bw) / 2, top + i * (bar + gap)),
+                size = androidx.compose.ui.geometry.Size(bw, bar),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(bar / 2, bar / 2),
+            )
         }
-        drawPath(path, color)
     }
 }
 
-/** Sparkle that turns slowly while Claude is working. */
+/** The mark while Claude is working: the layers light up one after another, top to bottom. */
 @Composable
-fun WorkingSpark(modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "spark")
-    val angle by transition.animateFloat(0f, 90f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "angle")
-    val scale by transition.animateFloat(0.8f, 1.05f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "scale")
+fun WorkingMark(modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "mark")
+    val phase by transition.animateFloat(0f, 3f, infiniteRepeatable(tween(1200)), label = "phase")
     Box(modifier.size(28.dp), contentAlignment = Alignment.Center) {
-        Spark(Modifier.size(22.dp * scale).rotate(angle))
+        Mark(Modifier.size(22.dp)) { i ->
+            // The layer at the current phase is brightest. The others fade toward 0.3.
+            val d = ((phase - i) % 3f + 3f) % 3f
+            (1f - d / 3f * 0.7f).coerceIn(0.3f, 1f)
+        }
     }
 }
 

@@ -4,8 +4,8 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Four-point sparkle, the app's own mark -->
+    <!-- The app's mark: three stacked rock layers (strata) -->
     <path
-        android:fillColor="#D97757"
-        android:pathData="M54,30 C56,46 62,52 78,54 C62,56 56,62 54,78 C52,62 46,56 30,54 C46,52 52,46 54,30 Z" />
+        android:fillColor="#0F7A72"
+        android:pathData="M47,38 H61 A4,4 0 0 1 61,46 H47 A4,4 0 0 1 47,38 Z M41.5,50 H66.5 A4,4 0 0 1 66.5,58 H41.5 A4,4 0 0 1 41.5,50 Z M36,62 H72 A4,4 0 0 1 72,70 H36 A4,4 0 0 1 36,62 Z" />
 </vector>

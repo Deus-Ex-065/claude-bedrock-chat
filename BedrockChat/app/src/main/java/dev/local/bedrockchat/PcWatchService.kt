@@ -49,7 +49,7 @@ class PcWatchService : Service() {
      * It shows the real connection state. [connected] is null before the first answer from the bridge.
      */
     private fun ongoing(connected: Boolean?) = NotificationCompat.Builder(this, CHANNEL_WATCH)
-        .setSmallIcon(R.drawable.ic_notify_spark)
+        .setSmallIcon(R.drawable.ic_notify_mark)
         .setContentTitle(when (connected) {
             true -> "Connected to $pcName"
             false -> "Reconnecting to $pcName…"
@@ -138,7 +138,7 @@ class PcWatchService : Service() {
             .let { titles[sid] }
             ?.ifBlank { null } ?: "PC session"
         val n = NotificationCompat.Builder(this, channel)
-            .setSmallIcon(R.drawable.ic_notify_spark)
+            .setSmallIcon(R.drawable.ic_notify_mark)
             .setContentTitle(title)
             .setSubText(label)
             .setContentText(text)

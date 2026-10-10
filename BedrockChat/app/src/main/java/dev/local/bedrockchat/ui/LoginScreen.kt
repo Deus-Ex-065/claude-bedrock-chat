@@ -68,7 +68,7 @@ fun LoginScreen(onSignIn: suspend (apiKey: String, region: String, modelId: Stri
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height(72.dp))
-            Spark(Modifier.size(56.dp))
+            Mark(Modifier.size(56.dp))
             Spacer(Modifier.height(20.dp))
             Text(
                 "Claude, through\nAmazon Bedrock",

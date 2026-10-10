@@ -411,7 +411,7 @@ private fun Greeting(incognito: Boolean, name: String, modifier: Modifier) {
                 style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary, textAlign = TextAlign.Center,
             )
         } else {
-            Spark(Modifier.size(52.dp))
+            Mark(Modifier.size(52.dp))
             Spacer(Modifier.height(14.dp))
             val hour = LocalTime.now().hour
             val greeting = when (hour) { in 5..11 -> "Good morning"; in 12..17 -> "Good afternoon"; else -> "Good evening" }
@@ -514,7 +514,7 @@ private fun AssistantMessage(
 
         if (streaming) {
             Spacer(Modifier.height(10.dp))
-            WorkingSpark()
+            WorkingMark()
         }
 
         message.error?.let { error ->
