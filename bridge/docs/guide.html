@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Claude Code Phone Bridge: Setup Guide</title>
+<style>
+  @page { size: A4; margin: 16mm 16mm 18mm 16mm; }
+  body { font-family: "Segoe UI", Arial, sans-serif; font-size: 10.5pt; line-height: 1.45; color: #222; }
+  h1 { font-size: 20pt; margin: 0 0 4pt; }
+  .sub { color: #666; margin: 0 0 14pt; }
+  h2 { font-size: 13pt; margin: 16pt 0 6pt; padding-bottom: 3pt; border-bottom: 1px solid #ddd; page-break-after: avoid; }
+  h3 { font-size: 11pt; margin: 10pt 0 4pt; page-break-after: avoid; }
+  code, pre { font-family: Consolas, "Courier New", monospace; font-size: 9.5pt; }
+  code { background: #f2f2f2; padding: 0 3px; border-radius: 3px; }
+  pre { background: #f4f4f4; border: 1px solid #e2e2e2; border-radius: 4px; padding: 7pt 9pt; white-space: pre-wrap; page-break-inside: avoid; }
+  table { border-collapse: collapse; width: 100%; margin: 6pt 0; page-break-inside: avoid; }
+  th, td { border: 1px solid #ccc; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #f2f2f2; }
+  .shots { display: flex; gap: 14pt; justify-content: center; margin: 10pt 0; page-break-inside: avoid; }
+  figure { margin: 0; text-align: center; }
+  figure img { width: 150pt; border: 1px solid #ccc; border-radius: 8pt; }
+  figcaption { font-size: 9pt; color: #555; margin-top: 3pt; }
+  .note { background: #fff7e6; border-left: 3px solid #e0a030; padding: 5pt 9pt; margin: 8pt 0; page-break-inside: avoid; }
+  ol li, ul li { margin: 2pt 0; }
+</style>
+</head>
+<body>
+
+<h1>Claude Code Phone Bridge</h1>
+<p class="sub">Setup guide: follow, message, and approve Claude Code sessions on your computer from an Android phone</p>
+
+<h2>1. What it does</h2>
+<p>The bridge is a small program that runs on the computer where you use Claude Code. The phone app
+connects to it over your local network. With it you can:</p>
+<ul>
+  <li>See all Claude Code sessions on the computer, and follow each one live.</li>
+  <li>Send a message to a session.</li>
+  <li>Allow or deny tool requests (for example, a shell command) from the phone.</li>
+</ul>
+<p>The bridge uses only documented Claude Code interfaces: hooks, <code>claude agents</code>, and the
+Claude Agent SDK. Watching adds no tokens. Only a message that you send from the phone uses tokens,
+the same as a message typed on the computer. It works with any Claude Code sign-in, including Amazon Bedrock.</p>
+
+<h2>2. What you need</h2>
+<table>
+  <tr><th>Item</th><th>Details</th></tr>
+  <tr><td>Computer</td><td>Windows, macOS, or Linux, with Claude Code installed and signed in.
+    The <code>claude</code> command must work in a terminal.</td></tr>
+  <tr><td>Python</td><td>Python 3.10 or later.</td></tr>
+  <tr><td>Shell and curl</td><td>The hooks use <code>curl</code> and a POSIX shell. macOS and Linux have both.
+    On Windows, Claude Code uses Git Bash, which includes them.</td></tr>
+  <tr><td>Claude Agent SDK</td><td>The Python package <code>claude-agent-sdk</code> (see step 3).</td></tr>
+  <tr><td>Phone</td><td>Android 8.0 or later, with the Bedrock Chat app (APK file).</td></tr>
+  <tr><td>Network</td><td>The phone and the computer must be on the same Wi-Fi or local network.</td></tr>
+</table>
+
+<h2>3. Set up the computer (one time)</h2>
+<h3>3.1 Get the bridge files</h3>
+<p>Put these three files in one folder, for example <code>bridge</code>:
+<code>bridge.py</code>, <code>viewer.html</code>, and <code>install_hooks.py</code>.
+Open a terminal in the folder that contains <code>bridge</code>.</p>
+
+<h3>3.2 Install the Claude Agent SDK</h3>
+<pre>python -m pip install claude-agent-sdk</pre>
+<p>If you do not want to install packages system-wide, install into a folder and tell the bridge where it is:</p>
+<pre>python -m pip install --target C:\Tools\claude-agent-sdk claude-agent-sdk
+set CLAUDE_AGENT_SDK_DIR=C:\Tools\claude-agent-sdk          (Windows cmd)
+export CLAUDE_AGENT_SDK_DIR=$HOME/tools/claude-agent-sdk     (macOS, Linux, Git Bash)</pre>
+
+<h3>3.3 Add the hooks to Claude Code</h3>
+<p>The hooks tell the bridge what each session does. First run the script without options to see
+the change. It shows only the <code>hooks</code> section of your settings:</p>
+<pre>python -I bridge/install_hooks.py</pre>
+<p>Then apply it. The script makes a backup of <code>~/.claude/settings.json</code> first, and it keeps your other hooks:</p>
+<pre>python -I bridge/install_hooks.py --apply</pre>
+<div class="note">The hooks print nothing and do not slow Claude Code. When the bridge is not running,
+Claude Code works as usual. To remove the hooks, run <code>install_hooks.py --remove</code>.</div>
+
+<h2>4. Start the bridge</h2>
+<p>Start it each time you want to use the phone:</p>
+<pre>python -I bridge/bridge.py --lan</pre>
+<p>It prints the phone address and a pairing code:</p>
+<pre>Bridge running at http://localhost:8765
+Phone address: http://192.168.1.20:8765
+Pairing code: 703460 (valid 10 minutes)</pre>
+<ul>
+  <li><code>--lan</code> lets the phone connect. Without it, only the computer itself can connect.</li>
+  <li>A pairing code works one time and changes every 10 minutes. To see the current code, open
+    <code>http://localhost:8765</code> in a browser on the computer and look at <b>Pair a phone</b>.</li>
+  <li>On Windows, the first start can show a firewall prompt for Python. Allow it on <b>private</b> networks.</li>
+</ul>
+
+<h2>5. Set up the phone (one time)</h2>
+<ol>
+  <li>Copy the APK file to the phone and open it. If Android asks, allow installs from that source.</li>
+  <li>Open the app, open the menu (three lines, top left), and tap <b>PC sessions</b>.</li>
+  <li>Enter the <b>phone address</b> from step 4 (for example <code>192.168.1.20:8765</code>) and the <b>pairing code</b>.</li>
+  <li>Tap <b>Pair</b>. The app keeps the pairing, so you do this one time only.</li>
+</ol>
+
+<h3>When to pair again</h3>
+<p>Restarting the bridge or the computer does <b>not</b> remove the pairing. The bridge keeps the phone's
+token in the file <code>bridge/.bridge-token</code> and reads it again at each start.
+You must pair again only in these cases:</p>
+<table>
+  <tr><th>Case</th><th>Why</th></tr>
+  <tr><td>You deleted <code>bridge/.bridge-token</code></td><td>The bridge makes a new token, so the old one stops working.</td></tr>
+  <tr><td>You moved the bridge to a new folder or computer without that file</td><td>Same as above.</td></tr>
+  <tr><td>You tapped <b>Unpair this PC</b>, cleared the app's data, or reinstalled the app</td><td>The phone no longer has the token.</td></tr>
+  <tr><td>The computer's network address changed</td><td>The app keeps the old address. Unpair, then pair with the new address.
+    To prevent this, reserve a fixed address for the computer in your router settings.</td></tr>
+</table>
+<p>Messages and approvals also continue after a bridge restart, and each <b>Approve on this phone</b>
+switch stays as you set it. A phone message that waits for an open
+session is kept only while the bridge runs, so send it again if you restart the bridge before it is delivered.</p>
+
+<h2>6. Use it</h2>
+<div class="shots">
+  <figure><img src="pair.png"><figcaption>Pair the phone</figcaption></figure>
+  <figure><img src="sessions.png"><figcaption>All sessions</figcaption></figure>
+  <figure><img src="session.png"><figcaption>One session, with a request</figcaption></figure>
+</div>
+<h3>Follow sessions</h3>
+<p>The list shows the sessions on the computer. An orange dot means the session is working.
+A green dot means it is open and waiting. Tap a session to follow it live. Tap a tool row or
+<b>Result</b> to see more.</p>
+<h3>Send a message</h3>
+<p>Type in the box at the bottom of a session and tap the arrow.</p>
+<ul>
+  <li><b>Session open on the computer:</b> the message goes in when Claude finishes its current turn.
+    If you type on the computer first, your typed prompt goes first and the phone message waits.</li>
+  <li><b>Session closed:</b> the bridge continues the session on the computer with <code>claude -p --resume</code>.</li>
+</ul>
+<h3>Approve requests</h3>
+<p>Turn on <b>Approve on this phone</b> in a session. Then tool requests come to the phone as a card
+with <b>Deny</b>, <b>Always allow</b>, and <b>Allow</b>. When the switch is off, requests show on the computer as usual.</p>
+<ul>
+  <li>If nobody answers on the phone in about 10 minutes, the request goes back to the computer.</li>
+  <li>For a session that the bridge continues with <code>claude -p</code>, requests always come to the phone,
+    and a request with no answer is denied.</li>
+  <li><b>Always allow</b> adds the rule that Claude Code suggests for that request.</li>
+</ul>
+
+<h3>Notifications</h3>
+<p>Notifications are on by default. Right after you pair, Android asks for two permissions: notifications,
+and background use ("Let app always run in the background?"). Allow both. Android does not let an app ask at install time.
+Then the phone notifies you even when the app is closed:</p>
+<ul>
+  <li><b>Approval needed:</b> a request waits for you on the phone. Tap the notification to open the session and answer.</li>
+  <li><b>Claude finished:</b> a turn ended, with the start of the reply.</li>
+</ul>
+<p>To keep the phone quiet while you work at the computer, it notifies only for sessions that you control from the phone:
+sessions with <b>Approve on this phone</b> on, and turns that a phone message started. It does not notify about the session that is open on the screen.</p>
+<ul>
+  <li>While notifications are on, a silent notification shows the connection: "Connected to <i>your PC</i>", or
+    "Reconnecting…" when the phone cannot reach it. Android requires it for an app that stays connected in the background.
+    Tap <b>Turn off alerts</b> on it, or use the <b>Notifications</b> switch at the top of the PC sessions list.</li>
+  <li>Notifications need the bridge connection, so they work on the same network only.</li>
+  <li>Some phones (for example OnePlus, Xiaomi, Samsung) also have their own battery limits. If notifications stop,
+    set the app's battery use to <b>Unrestricted</b> in Android settings.</li>
+  <li>Notifications use no tokens.</li>
+</ul>
+
+<h2>7. Token use</h2>
+<p>The bridge does not call Claude by itself. Tokens are used only when Claude does a turn. This table shows
+what each phone action costs, compared with the same action on the computer.</p>
+<table>
+  <tr><th>Phone action</th><th>Tokens</th></tr>
+  <tr><td>Open the app, see the session list, follow a session live</td><td><b>None.</b> The bridge reads the
+    session files on the computer. The hooks send events to the bridge only, and they add nothing to Claude's context.</td></tr>
+  <tr><td>Allow, Deny, or Always allow a request</td><td><b>None extra.</b> It is the same as answering the dialog on the computer.</td></tr>
+  <tr><td>Notifications</td><td><b>None.</b> They come from the same events as the live view.</td></tr>
+  <tr><td>Wait for a phone message (an idle open session)</td><td><b>None.</b> A small background hook waits on the computer.
+    It does not call Claude.</td></tr>
+  <tr><td>Send a message to an <b>open</b> session</td><td><b>About the same as typing it on the computer.</b>
+    The bridge adds a short note (about 25 tokens) that asks Claude to start its reply with your message as a quote.
+    The quote is how the message shows on the computer. The reply is longer by that one line.</td></tr>
+  <tr><td>Send a message to a <b>closed</b> session</td><td><b>Can be expensive.</b> The bridge continues the session
+    with <code>claude -p --resume</code>. Claude reads the whole conversation again as input. For a long session,
+    that can be many thousands of tokens. The app warns you before it sends.</td></tr>
+</table>
+<div class="note">Claude Code caches the conversation for a short time (usually a few minutes). A message soon after
+the last turn reads most of the conversation from the cache, which costs less. After a long pause, the next turn reads
+it at the full price. This is the same for messages typed on the computer.</div>
+<ul>
+  <li>Each phone message is one normal turn. The bridge does not retry a message or send it two times.</li>
+  <li>An idle session that gets a phone message starts a new turn. Claude Code shows the message on the computer
+    with the label "Stop hook blocking error". This label is normal and adds no tokens.</li>
+  <li>To spend the fewest tokens, send messages to sessions that are open on the computer, and keep the messages short.</li>
+</ul>
+
+<h2>8. If something does not work</h2>
+<table>
+  <tr><th>Problem</th><th>What to do</th></tr>
+  <tr><td>"Could not reach …"</td><td>Make sure the bridge runs with <code>--lan</code>, the phone is on the same network,
+    and the address is correct. On Windows, check that the firewall allows Python on private networks.</td></tr>
+  <tr><td>"Wrong or expired code"</td><td>Get the current code from <code>http://localhost:8765</code> on the computer.</td></tr>
+  <tr><td>"This phone is no longer paired"</td><td>Pair again with a new code.</td></tr>
+  <tr><td>No sessions, or no live updates</td><td>Check that the hooks are applied (step 3.3) and that
+    <code>claude agents --json</code> works in a terminal.</td></tr>
+  <tr><td><code>ModuleNotFoundError: claude_agent_sdk</code></td><td>Install the SDK (step 3.2), or set <code>CLAUDE_AGENT_SDK_DIR</code>.</td></tr>
+  <tr><td>Port 8765 is in use</td><td>Stop the other program. The hooks expect port 8765.</td></tr>
+</table>
+
+<h2>9. Security</h2>
+<ul>
+  <li>The phone gets a secret token when it pairs. Every request needs it.</li>
+  <li>After 5 wrong codes, pairing is locked for 5 minutes.</li>
+  <li>Hook events and pairing codes are accepted from the computer itself only.</li>
+  <li>The connection is plain HTTP on your local network. Do not forward the port on your router or
+    expose it to the internet.</li>
+  <li>To unpair one phone, tap <b>⋮ → Unpair this PC</b> in the app. To unpair all phones, stop the bridge,
+    delete <code>bridge/.bridge-token</code> and <code>bridge/.paired-devices.json</code>, and start the bridge again.</li>
+  <li>At start-up, the bridge lists the paired phones and when each was last seen. While it runs, it shows
+    "Phone connected" and "Phone disconnected" when the app opens or leaves a PC screen.
+    A phone that is not seen for 30 days leaves this list. This does not unpair it.</li>
+</ul>
+
+<h2>10. Remove it</h2>
+<pre>python -I bridge/install_hooks.py --remove</pre>
+<p>Then delete the bridge folder and uninstall the app.</p>
+
+</body>
+</html>

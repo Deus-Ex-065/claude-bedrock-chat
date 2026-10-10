@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Claude Code bridge</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; margin: 0; display: flex; height: 100vh; background: #262624; color: #e8e6dc; }
+  #list { width: 340px; overflow: auto; border-right: 1px solid #3d3d3a; }
+  #feed { flex: 1; overflow: auto; padding: 16px 24px; }
+  .s { padding: 10px 14px; border-bottom: 1px solid #3d3d3a; cursor: pointer; }
+  .s:hover, .s.on { background: #30302e; }
+  .s small { color: #9c9a92; display: block; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .busy { background: #d97757; } .idle { background: #7fb069; }
+  .m { margin: 10px 0; padding: 10px 12px; border-radius: 10px; white-space: pre-wrap; word-wrap: break-word; }
+  .user { background: #141413; margin-left: 15%; }
+  .assistant { background: transparent; }
+  .tool { font: 13px/1.4 ui-monospace, monospace; color: #9c9a92; background: #1f1e1d; }
+  .err { color: #e06c75; }
+  .think { color: #9c9a92; font-style: italic; }
+  .hint { color: #9c9a92; }
+</style>
+</head>
+<body>
+<div id="list"></div>
+<div id="feed"><p class="hint">Pick a session. This viewer only checks the feed; the phone app renders the Markdown.</p></div>
+<script>
+const TOKEN = "__TOKEN__";  // Filled in by the bridge; this page is served to this PC only.
+const api = path => fetch(path, {headers: {Authorization: "Bearer " + TOKEN}}).then(r => r.json());
+const esc = s => String(s).replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c]));
+const brief = i => i ? (i.command || i.file_path || i.pattern || i.description || i.url || JSON.stringify(i)).toString().slice(0, 160) : "";
+async function loadList() {
+  const list = await api("/api/sessions");
+  const pair = await (await fetch("/api/pairing-code")).json();
+  document.getElementById("list").innerHTML =
+    `<div class="s" style="cursor:default"><b>Pair a phone</b>` +
+    `<small>Code: <b style="color:#e8e6dc;font-size:18px;letter-spacing:2px">${pair.code}</b> · ${Math.ceil(pair.expires_in / 60)} min left</small>` +
+    `<small>${pair.addresses.length ? "Address: " + pair.addresses.join(" or ") : "Start the bridge with --lan for phone access"}</small></div>` +
+    list.map(s =>
+    `<div class="s" data-id="${s.session_id}">${s.live ? `<span class="dot ${s.status}"></span>` : ""}${esc(s.title)}` +
+    `<small>${esc(s.cwd || "")} · ${new Date(s.last_modified).toLocaleString()}${s.live ? " · " + s.status : ""}</small></div>`).join("");
+  document.querySelectorAll(".s").forEach(el => el.onclick = () => open(el));
+}
+async function open(el) {
+  document.querySelectorAll(".s").forEach(x => x.classList.remove("on")); el.classList.add("on");
+  const feed = document.getElementById("feed"); feed.innerHTML = '<p class="hint">Loading…</p>';
+  const msgs = await api(`/api/sessions/${el.dataset.id}/messages`);
+  if (msgs.error) { feed.innerHTML = `<p class="err">${esc(msgs.error)}</p>`; return; }
+  feed.innerHTML = msgs.map(m => m.message.content.map(b => {
+    if (b.type === "text") return `<div class="m ${m.type}">${esc(b.text)}</div>`;
+    if (b.type === "thinking") return `<div class="m think">${esc(b.thinking)}</div>`;
+    if (b.type === "tool_use") return `<div class="m tool">▶ ${esc(b.name)}: ${esc(brief(b.input))}</div>`;
+    if (b.type === "tool_result") return `<div class="m tool ${b.is_error ? "err" : ""}">◀ ${esc(b.content.slice(0, 300))}${b.content.length > 300 || b.truncated ? " …" : ""}</div>`;
+    return "";
+  }).join("")).join("") + `<p class="hint">${msgs.length} messages</p>`;
+  feed.scrollTop = feed.scrollHeight;
+}
+// Live updates from hook events. The open session refreshes shortly after each event.
+let current = null, refreshTimer = null, listTimer = null;
+const status = document.createElement("div");
+status.className = "hint"; status.id = "status";
+status.style.cssText = "position:sticky;bottom:0;background:#262624;padding:6px 0";
+function later(fn, ms, t) { clearTimeout(t); return setTimeout(fn, ms); }
+const source = new EventSource("/api/stream?token=" + encodeURIComponent(TOKEN));
+source.onmessage = ev => {
+  const e = JSON.parse(ev.data);
+  listTimer = later(loadList, 800, listTimer);
+  if (e.session_id !== current) return;
+  status.textContent = e.activity ? `● ${e.activity}…` : (e.event === "Notification" ? `⚠ ${e.message}` : "");
+  if (["UserPromptSubmit", "PostToolUse", "Stop"].includes(e.event)) {
+    refreshTimer = later(() => open(document.querySelector(`.s[data-id="${current}"]`), true), 600, refreshTimer);
+  }
+};
+const openOnce = open;
+open = async (el, keepScroll) => {
+  if (!el) return;
+  current = el.dataset.id;
+  const feed = document.getElementById("feed");
+  const atBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 60;
+  await openOnce(el);
+  feed.appendChild(status);
+  if (keepScroll && !atBottom) return;
+  feed.scrollTop = feed.scrollHeight;
+};
+const loadListOnce = loadList;
+loadList = async () => {
+  await loadListOnce();
+  document.querySelectorAll(".s").forEach(el => { if (el.dataset.id === current) el.classList.add("on"); });
+};
+loadList();
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The PC bridge runs over plain http on the home network, at an address the user enters.
+     Android cannot limit cleartext to private IP ranges, so it is allowed in general.
+     Bedrock calls always use https. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

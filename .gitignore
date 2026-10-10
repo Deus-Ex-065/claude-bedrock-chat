@@ -1,0 +1,24 @@
+# Secrets and local state of the bridge. Never commit these.
+bridge/.bridge-token
+bridge/.paired-devices.json
+bridge/.approve-on-phone.json
+__pycache__/
+*.pyc
+
+# Android build output and machine-specific files
+BedrockChat/.gradle/
+BedrockChat/.kotlin/
+BedrockChat/build/
+BedrockChat/app/build/
+BedrockChat/local.properties
+.idea/
+*.iml
+
+# APKs go to GitHub Releases, not into the repository
+*.apk
+
+# Not part of this project: Anthropic's own app and screenshots of it
+survey/
+
+# Local editor and Claude Code settings
+.claude/
