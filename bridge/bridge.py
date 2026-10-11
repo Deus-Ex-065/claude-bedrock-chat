@@ -258,6 +258,7 @@ def remember_pc_prompt(sid, prompt):
             prompts = _pc_prompts.setdefault(sid, [])
             prompts.append((last, text))
             del prompts[:-MAX_PC_PROMPTS]
+            save_prompts()
 
     threading.Thread(target=note, daemon=True).start()
 
@@ -318,6 +319,28 @@ def control_state(sid):
 
 
 REMOTE_FILE = HERE / ".approve-on-phone.json"  # Keeps the phone switch through bridge restarts
+
+
+PROMPTS_FILE = HERE / ".session-prompts.json"  # Phone and mid-turn PC prompts, through bridge restarts
+
+
+def load_prompts():
+    try:
+        data = json.loads(PROMPTS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    for key, target in (("phone", _phone_prompts), ("pc", _pc_prompts)):
+        for sid, items in (data.get(key) or {}).items():
+            target[sid] = [(after, text) for after, text in items]
+
+
+def save_prompts():
+    """Call with _control held."""
+    data = {"phone": _phone_prompts, "pc": _pc_prompts}
+    try:
+        PROMPTS_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    except OSError as e:
+        print("Could not save the session prompts:", e, file=sys.stderr)
 
 
 def load_remote():
@@ -428,7 +451,11 @@ def wait_for_prompt(data):
         text = _queued[sid].pop(0)["text"]
         _stopping.discard(sid)  # A new turn starts.
     last = next((m["uuid"] for m in reversed(messages_raw(sid)) if m.get("uuid")), None)
-    _phone_prompts.setdefault(sid, []).append((last, text))
+    with _control:
+        prompts = _phone_prompts.setdefault(sid, [])
+        prompts.append((last, text))
+        del prompts[:-MAX_PC_PROMPTS]
+        save_prompts()
     _last_reply.pop(sid, None)  # A new turn starts, as for UserPromptSubmit.
     _activity[sid] = "Thinking"
     _phone_turns.add(sid)
@@ -695,17 +722,30 @@ def messages_raw(session_id, limit=None, offset=0):
     return [c for c in (clean_message(m) for m in raw) if c]
 
 
-PHONE_QUOTE = re.compile(r"\A\s*> 📱 \*\*From your phone:\*\*[^\n]*\n*")
+PHONE_QUOTE = re.compile(r"\A\s*> 📱 \*\*From your phone:\*\*[ \t]*([^\n]*)\n*")
+
+
+def is_text(m):
+    """True for a record that shows as a bubble: user or assistant text, not tool calls or results."""
+    content = m["message"]["content"]
+    if isinstance(content, str):
+        return bool(content.strip())
+    return any(isinstance(b, dict) and b.get("type") == "text" and b.get("text", "").strip() for b in content)
 
 
 def messages(session_id, limit, offset):
     out = messages_raw(session_id, limit, offset)
     # The phone shows its own messages as bubbles, so it does not need the quote line that the PC needs.
+    # The quote is kept: it rebuilds a bubble that the bridge does not know (sent before PROMPTS_FILE existed).
+    quoted = []  # (assistant record, the phone message it quotes)
     for m in out:
         if m["type"] == "assistant":
             for b in m["message"]["content"]:
                 if b["type"] == "text":
-                    b["text"] = PHONE_QUOTE.sub("", b["text"])
+                    q = PHONE_QUOTE.match(b["text"])
+                    if q:
+                        quoted.append((m, q.group(1).strip()))
+                        b["text"] = b["text"][q.end():]
     out = [m for m in out if m["type"] != "assistant" or any(b["type"] != "text" or b["text"] for b in m["message"]["content"])]
     # Messages the waiter delivered reach Claude as hook output, not as user records. Show them as the user's.
     for after, text in _phone_prompts.get(session_id, []):
@@ -716,6 +756,15 @@ def messages(session_id, limit, offset):
             out.insert(at, bubble)
         elif after is None and offset == 0:
             out.insert(0, bubble)
+    # Replies that quote a phone message with no bubble before them: show the quote as the bubble.
+    for m, text in quoted:
+        at = next((i for i, x in enumerate(out) if x is m), None)
+        if at is None or not text:
+            continue
+        before = next((x for x in reversed(out[:at]) if is_text(x)), None)
+        if before is None or before["type"] != "user":
+            out.insert(at, {"type": "user", "uuid": None, "session_id": session_id, "parent_tool_use_id": None,
+                            "message": {"role": "user", "content": [{"type": "text", "text": text}]}, "from_phone": True})
     # PC prompts that the transcript list does not show: the ones typed while Claude worked.
     with _control:
         pc_prompts = list(_pc_prompts.get(session_id, []))
@@ -936,6 +985,7 @@ def main():
     print(f"Bridge running at http://localhost:{args.port}", flush=True)
     load_devices()
     load_remote()
+    load_prompts()
     print_devices()
     if args.lan:
         for address in lan_addresses(args.port):

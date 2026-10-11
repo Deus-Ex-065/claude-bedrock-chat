@@ -2,6 +2,7 @@
 bridge/.bridge-token
 bridge/.paired-devices.json
 bridge/.approve-on-phone.json
+bridge/.session-prompts.json
 __pycache__/
 *.pyc
 
