@@ -772,7 +772,10 @@ def messages(session_id, limit, offset):
         before = next((x for x in reversed(out[:at]) if is_text(x)), None)
         # A reply can quote the same message again later in its turn. Then the bubble is already there.
         last_user = next((x for x in reversed(out[:at]) if x["type"] == "user" and is_text(x)), None)
-        same = last_user is not None and any(isinstance(b, dict) and b.get("type") == "text" and b.get("text", "").strip() == text
+        # The quote is one line, so compare without line breaks and extra spaces.
+        wanted = " ".join(text.split())
+        same = last_user is not None and any(isinstance(b, dict) and b.get("type") == "text"
+                                             and " ".join(b.get("text", "").split()) == wanted
                                              for b in last_user["message"]["content"])
         if not same and (before is None or before["type"] != "user"):
             out.insert(at, {"type": "user", "uuid": None, "session_id": session_id, "parent_tool_use_id": None,
