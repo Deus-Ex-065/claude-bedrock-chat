@@ -459,6 +459,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                                 thinkingMillis = thinkingMillis,
                                 apiContent = ClaudeService.encodeContent(event.message),
                                 apiTurns = event.turns,
+                                usage = event.usage,
                                 error = if (refusal) "Claude declined to respond to this request. Try rephrasing it, or pick another model." else null,
                             )
                         }

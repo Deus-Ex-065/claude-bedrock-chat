@@ -48,6 +48,8 @@ data class ChatMessage(
     val apiTurns: List<ApiTurn> = emptyList(),
     /** The tool calls in this reply, for the rows above the text. */
     val toolCalls: List<ToolCall> = emptyList(),
+    /** Tokens of the last request in this reply, for "Context usage". */
+    val usage: TokenUsage? = null,
     val modelId: String? = null,
     val error: String? = null,
     val stopped: Boolean = false,
@@ -57,6 +59,12 @@ data class ChatMessage(
 /** One API turn inside a reply. [content] is JSON of List<ContentBlockParam>. */
 @Serializable
 data class ApiTurn(val role: Role, val content: String)
+
+@Serializable
+data class TokenUsage(val input: Long, val cacheRead: Long, val cacheWrite: Long, val output: Long) {
+    /** About how much of the context window the chat fills after this reply. */
+    val context: Long get() = input + cacheRead + cacheWrite + output
+}
 
 @Serializable
 enum class ToolStatus { RUNNING, DONE, FAILED }

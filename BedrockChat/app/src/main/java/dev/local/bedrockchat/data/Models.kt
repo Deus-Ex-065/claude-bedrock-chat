@@ -1,7 +1,13 @@
 package dev.local.bedrockchat.data
 
 /** Claude models offered in the model picker. IDs are the Bedrock (Mantle) model IDs. */
-data class ClaudeModel(val id: String, val name: String, val description: String)
+data class ClaudeModel(
+    val id: String,
+    val name: String,
+    val description: String,
+    /** Tokens the model can hold in one request. All the models in the app have 1M. */
+    val contextWindow: Long = 1_000_000,
+)
 
 val MODELS = listOf(
     ClaudeModel("anthropic.claude-fable-5-1", "Fable 5.1", "For your toughest challenges"),

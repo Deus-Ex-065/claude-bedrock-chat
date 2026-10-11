@@ -722,6 +722,10 @@ def clean_message(m):
     if m.type == "assistant":
         out["message"]["model"] = body.get("model")
         out["message"]["stop_reason"] = body.get("stop_reason")
+        usage = body.get("usage")
+        if isinstance(usage, dict):  # Only the four counts: the phone shows how full the context is.
+            out["message"]["usage"] = {k: usage.get(k) or 0 for k in (
+                "input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "output_tokens")}
     return out
 
 

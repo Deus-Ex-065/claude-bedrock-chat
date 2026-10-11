@@ -70,10 +70,28 @@ data class PcMessage(
     val message: PcMessageBody,
     /** Sent from the phone. Claude got it from a hook, so it is not a user record in the transcript. */
     @SerialName("from_phone") val fromPhone: Boolean = false,
+    /** Set for a subagent's message. Its tokens are not the session's context. */
+    @SerialName("parent_tool_use_id") val parentToolUseId: String? = null,
 )
 
 @Serializable
-data class PcMessageBody(val role: String = "", val content: List<JsonObject> = emptyList())
+data class PcMessageBody(
+    val role: String = "",
+    val content: List<JsonObject> = emptyList(),
+    val model: String? = null,
+    val usage: PcUsage? = null,
+)
+
+/** Tokens of one request, as the API reports them. */
+@Serializable
+data class PcUsage(
+    @SerialName("input_tokens") val input: Long = 0,
+    @SerialName("cache_read_input_tokens") val cacheRead: Long = 0,
+    @SerialName("cache_creation_input_tokens") val cacheWrite: Long = 0,
+    @SerialName("output_tokens") val output: Long = 0,
+) {
+    fun toTokenUsage() = TokenUsage(input, cacheRead, cacheWrite, output)
+}
 
 @Serializable
 data class PcEvent(

@@ -86,6 +86,7 @@ import dev.local.bedrockchat.PcUiState
 import dev.local.bedrockchat.PcViewModel
 import dev.local.bedrockchat.data.PcPermission
 import dev.local.bedrockchat.data.PcSession
+import dev.local.bedrockchat.data.modelById
 import kotlinx.coroutines.delay
 import android.Manifest
 import android.content.pm.PackageManager
@@ -457,6 +458,11 @@ fun PcSessionScreen(vm: PcViewModel, state: PcUiState, onBack: () -> Unit) {
     val listState = rememberLazyListState()
     val clipboard = LocalClipboardManager.current
     val activity = state.openId?.let { state.activity[it] }
+    // The newest main-session reply tells how full the context is. Subagents have their own context.
+    val lastUsage = remember(state.messages) {
+        state.messages.lastOrNull { it.type == "assistant" && it.parentToolUseId == null && it.message.usage != null }
+    }
+    var showContext by remember { mutableStateOf(false) }
 
     // Start at the newest message, and follow new ones while the reader is at the bottom.
     var followed by remember { mutableStateOf(0) }
@@ -485,6 +491,26 @@ fun PcSessionScreen(vm: PcViewModel, state: PcUiState, onBack: () -> Unit) {
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
+            lastUsage?.let { m ->
+                val share = m.message.usage!!.toTokenUsage().context.toFloat() / contextWindowOf(m.message.model)
+                TextButton(onClick = { showContext = true }) {
+                    Text(
+                        "Context ${percent(share)}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (share > 0.8f) MaterialTheme.colorScheme.error else colors.textSecondary,
+                        maxLines = 1, softWrap = false,
+                    )
+                }
+            }
+        }
+        if (showContext) {
+            val m = lastUsage
+            ContextUsageDialog(
+                m?.message?.usage?.toTokenUsage(), contextWindowOf(m?.message?.model), m?.message?.model?.let { modelById("anthropic.$it").name } ?: "Claude",
+                note = "Claude Code compacts the session by itself when it gets near the limit. " +
+                    "Use /compact or /clear on the PC to make room sooner.",
+                onDismiss = { showContext = false },
+            )
         }
         Row(
             Modifier
@@ -860,4 +886,14 @@ private fun AttachmentChip(item: FeedItem.Attachment) {
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
+}
+
+/**
+ * The context window of a Claude Code model, from the model name in the transcript. Older models have 200K;
+ * newer ones have 1M. The transcript does not say if a session uses a smaller window, so this is a best guess.
+ */
+private fun contextWindowOf(model: String?): Long {
+    val m = model.orEmpty()
+    val old = Regex("""claude-3|claude-(opus|sonnet|haiku)-4-[015](\D|$)|claude-(opus|sonnet)-4(-\d{8})?$""").containsMatchIn(m)
+    return if (old) 200_000 else 1_000_000
 }

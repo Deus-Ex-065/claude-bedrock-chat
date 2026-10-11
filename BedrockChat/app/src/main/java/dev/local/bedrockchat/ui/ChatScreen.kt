@@ -104,6 +104,9 @@ import dev.local.bedrockchat.data.ToolStatus
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.DataUsage
+import dev.local.bedrockchat.data.TokenUsage
+import dev.local.bedrockchat.data.modelById
 import androidx.compose.material3.CircularProgressIndicator
 import kotlinx.coroutines.launch
 import java.io.File
@@ -154,6 +157,7 @@ fun ChatScreen(
     var showMenu by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var showContext by remember { mutableStateOf(false) }
     var selectText by remember { mutableStateOf<String?>(null) }
     var cameraFile by remember { mutableStateOf<File?>(null) }
 
@@ -258,6 +262,13 @@ fun ChatScreen(
                                     text = { Text("Rename") },
                                     leadingIcon = { Icon(Icons.Outlined.DriveFileRenameOutline, null) },
                                     onClick = { showMenu = false; renaming = true },
+                                )
+                            }
+                            if (messages.isNotEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("Context usage") },
+                                    leadingIcon = { Icon(Icons.Outlined.DataUsage, null) },
+                                    onClick = { showMenu = false; showContext = true },
                                 )
                             }
                             DropdownMenuItem(
@@ -434,6 +445,16 @@ fun ChatScreen(
             },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
             containerColor = colors.background,
+        )
+    }
+    if (showContext) {
+        val last = messages.lastOrNull { it.role == Role.ASSISTANT && it.usage != null }
+        val model = modelById(last?.modelId ?: state.modelId)
+        ContextUsageDialog(
+            last?.usage, model.contextWindow, model.name,
+            note = "Every message sends the whole chat again. Cached tokens cost much less than new input. " +
+                "Start a new chat when this one gets long.",
+            onDismiss = { showContext = false },
         )
     }
     selectText?.let { text ->
@@ -700,3 +721,60 @@ private fun NotifyCard(onTurnOn: () -> Unit, onClose: () -> Unit) {
         }
     }
 }
+
+/** How much of the model's context the chat fills, from the tokens of the last reply. */
+@Composable
+fun ContextUsageDialog(usage: TokenUsage?, window: Long, modelName: String, note: String, onDismiss: () -> Unit) {
+    val colors = AppTheme.colors
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = colors.background,
+        title = { Text("Context usage") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (usage == null) {
+                    Text("Send a message to see how much of the context this chat uses.", color = colors.textSecondary)
+                    return@Column
+                }
+                val share = usage.context.toFloat() / window
+                Text(
+                    "${tokens(usage.context)} of ${tokens(window)} tokens (${percent(share)})",
+                    style = MaterialTheme.typography.titleMedium, color = colors.text,
+                )
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { share.coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().height(6.dp),
+                    color = if (share > 0.8f) MaterialTheme.colorScheme.error else colors.accent,
+                    trackColor = colors.textSecondary.copy(alpha = 0.2f),
+                    drawStopIndicator = {},
+                )
+                Text("Last reply ($modelName)", style = MaterialTheme.typography.labelLarge, color = colors.textSecondary)
+                UsageRow("Input", usage.input)
+                UsageRow("Read from cache", usage.cacheRead)
+                UsageRow("Written to cache", usage.cacheWrite)
+                UsageRow("Output", usage.output)
+                Text(
+                    note,
+                    style = MaterialTheme.typography.bodySmall, color = colors.textSecondary,
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
+}
+
+@Composable
+private fun UsageRow(label: String, value: Long) {
+    Row(Modifier.fillMaxWidth()) {
+        Text(label, color = AppTheme.colors.text, modifier = Modifier.weight(1f))
+        Text("%,d".format(value), color = AppTheme.colors.text)
+    }
+}
+
+private fun tokens(n: Long): String = when {
+    n >= 1_000_000 -> (if (n % 1_000_000 == 0L) "%.0fM" else "%.2fM").format(n / 1_000_000.0)
+    n >= 1_000 -> "%.1fK".format(n / 1_000.0)
+    else -> n.toString()
+}
+
+fun percent(share: Float): String = if (share > 0f && share < 0.01f) "<1%" else "%.0f%%".format(share * 100)

@@ -135,6 +135,12 @@ A green dot means it is open and waiting. Tap a session to follow it live. Tap a
   <li><b>Session closed:</b> the bridge continues the session on the computer with <code>claude -p --resume</code>.</li>
   <li>A message that waits shows "Sends when Claude finishes this turn". Tap <b>Delete</b> next to it to remove it before it goes in.</li>
 </ul>
+<h3>Context usage</h3>
+<p>The session header shows <b>Context</b> and a percentage: how much of the model's context window the session fills,
+from the tokens of Claude's last reply. Tap it to see the input, cache, and output tokens. Claude Code compacts the session
+by itself near the limit; use <code>/compact</code> or <code>/clear</code> on the computer to make room sooner. The window
+size comes from the model name, so a session with a smaller window can show a lower percentage than it is.</p>
+
 <h3>Stop a turn</h3>
 <p>While Claude works and the message box is empty, the send button changes to a stop button (a square). Tap it to stop
 the turn. Messages that wait to send are removed too.</p>

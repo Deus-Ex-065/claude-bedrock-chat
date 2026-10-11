@@ -51,7 +51,7 @@ sealed interface StreamEvent {
     data class TextDelta(val text: String) : StreamEvent
     data class ToolStarted(val id: String, val name: String, val label: String) : StreamEvent
     data class ToolFinished(val id: String, val label: String, val failed: Boolean, val detail: String?) : StreamEvent
-    data class Done(val message: Message, val turns: List<ApiTurn>) : StreamEvent
+    data class Done(val message: Message, val turns: List<ApiTurn>, val usage: TokenUsage) : StreamEvent
 }
 
 /**
@@ -144,7 +144,14 @@ class ClaudeService(private val credentials: Credentials) {
                     val uses = message.content().mapNotNull { it.toolUse().orElse(null) }
                     // A reply cut off by max_tokens can hold a half-written tool call. Do not run it.
                     if (message.stopReason().orElse(null) != StopReason.TOOL_USE || uses.isEmpty()) {
-                        trySend(StreamEvent.Done(message, turns.toList()))
+                        val u = message.usage()
+                        val usage = TokenUsage(
+                            input = u.inputTokens(),
+                            cacheRead = u.cacheReadInputTokens().orElse(0L),
+                            cacheWrite = u.cacheCreationInputTokens().orElse(0L),
+                            output = u.outputTokens(),
+                        )
+                        trySend(StreamEvent.Done(message, turns.toList(), usage))
                         close()
                         return@thread
                     }
