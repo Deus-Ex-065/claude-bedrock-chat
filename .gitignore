@@ -3,6 +3,7 @@ bridge/.bridge-token
 bridge/.paired-devices.json
 bridge/.approve-on-phone.json
 bridge/.session-prompts.json
+bridge/.last-claude-run.log
 __pycache__/
 *.pyc
 

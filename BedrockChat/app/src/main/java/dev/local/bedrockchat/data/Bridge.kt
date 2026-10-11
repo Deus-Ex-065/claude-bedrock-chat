@@ -41,6 +41,13 @@ data class PcSession(
     @SerialName("group_order") val groupOrder: Int? = null,
 )
 
+/** A project folder on the PC, from recent sessions, with the groups its sessions are in. */
+@Serializable
+data class PcFolder(val path: String, val groups: List<String> = emptyList())
+
+@Serializable
+data class PcFolders(val folders: List<PcFolder> = emptyList(), val groups: List<String> = emptyList())
+
 /** A tool call that waits for Allow or Deny on the phone. */
 @Serializable
 data class PcPermission(
@@ -123,6 +130,16 @@ class BridgeClient(private val link: BridgeLink) {
     suspend fun messages(sessionId: String): List<PcMessage> = get("/api/sessions/$sessionId/messages")
 
     suspend fun control(sessionId: String): PcControl = get("/api/sessions/$sessionId/control")
+
+    suspend fun folders(): PcFolders = get("/api/folders")
+
+    /** Starts a new session in [cwd] with [text] as its first prompt. Returns the new session id. */
+    suspend fun newSession(cwd: String, text: String, group: String?): String =
+        post<JsonObject>("/api/sessions/new", buildJsonObject {
+            put("cwd", cwd)
+            put("text", text)
+            if (group != null) put("group", group)
+        })["session_id"]?.jsonPrimitive?.content ?: throw BridgeException("The bridge did not return a session.")
 
     suspend fun setRemote(sessionId: String, on: Boolean): PcControl =
         post("/api/sessions/$sessionId/remote", buildJsonObject { put("on", on) })

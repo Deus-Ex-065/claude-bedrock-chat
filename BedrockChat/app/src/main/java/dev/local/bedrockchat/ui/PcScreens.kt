@@ -69,6 +69,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import dev.local.bedrockchat.data.PcFolders
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.runtime.setValue
@@ -133,6 +137,10 @@ fun PcSessionsScreen(vm: PcViewModel, state: PcUiState, onOpenDrawer: () -> Unit
     LaunchedEffect(state.link) { if (state.link != null) vm.refreshSessions() }
     var menu by remember { mutableStateOf(false) }
     var collapsed by remember { mutableStateOf(setOf<String>()) }
+    var newIn by remember { mutableStateOf<String?>(null) }  // The group to start a new session in; "" for none
+    newIn?.let { g ->
+        NewSessionDialog(vm, g, onDismiss = { newIn = null }, onStarted = { id -> newIn = null; onOpenSession(id) })
+    }
 
     Column(Modifier.fillMaxSize().background(colors.background).statusBarsPadding()) {
         Box(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp)) {
@@ -172,10 +180,10 @@ fun PcSessionsScreen(vm: PcViewModel, state: PcUiState, onOpenDrawer: () -> Unit
                 CircularProgressIndicator(color = colors.accent)
             }
             state.sessions.isEmpty() -> Text(
-                "No Claude Code sessions found on ${state.link.name}.",
+                "No Claude Code sessions found on ${state.link.name}. Start one from a terminal or the desktop app first.",
                 color = colors.textSecondary, modifier = Modifier.padding(24.dp),
             )
-            else -> LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
+            else -> Box(Modifier.fillMaxSize()) { LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
                 // The same groups as the PC's sidebar, in its order. Sessions in no group come last.
                 val sections = state.sessions.groupBy { it.group }.entries
                     .sortedBy { (name, list) -> if (name == null) Int.MAX_VALUE else list.first().groupOrder ?: Int.MAX_VALUE - 1 }
@@ -185,7 +193,7 @@ fun PcSessionsScreen(vm: PcViewModel, state: PcUiState, onOpenDrawer: () -> Unit
                     val open = key !in collapsed
                     if (grouped) {
                         item(key = "group:$key") {
-                            GroupHeader(name ?: "Sessions", list.size, open) {
+                            GroupHeader(name ?: "Sessions", list.size, open, onNew = name?.let { { newIn = it } }) {
                                 collapsed = if (open) collapsed + key else collapsed - key
                             }
                         }
@@ -196,6 +204,14 @@ fun PcSessionsScreen(vm: PcViewModel, state: PcUiState, onOpenDrawer: () -> Unit
                         }
                     }
                 }
+            }
+                androidx.compose.material3.ExtendedFloatingActionButton(
+                    onClick = { newIn = "" },
+                    icon = { Icon(Icons.Outlined.Add, null) },
+                    text = { Text("New session") },
+                    containerColor = colors.accent, contentColor = Color.White,
+                    modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(16.dp),
+                )
             }
         }
     }
@@ -289,8 +305,115 @@ private fun TrackVisibleSession(sessionId: String?) {
     }
 }
 
+/**
+ * Starts a new Claude Code session on the PC. The message is its first prompt, so Claude gets it as a normal
+ * user message. The folder comes from recent sessions; the group shows on the phone only.
+ */
 @Composable
-private fun GroupHeader(name: String, count: Int, open: Boolean, onToggle: () -> Unit) {
+private fun NewSessionDialog(vm: PcViewModel, group: String, onDismiss: () -> Unit, onStarted: (String) -> Unit) {
+    val colors = AppTheme.colors
+    val scope = rememberCoroutineScope()
+    var data by remember { mutableStateOf<PcFolders?>(null) }
+    var loaded by remember { mutableStateOf(false) }
+    var chosenGroup by remember { mutableStateOf(group) }
+    var folder by remember { mutableStateOf<String?>(null) }
+    var text by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        data = vm.folders()
+        loaded = true
+        if (data == null) error = "New sessions need the new bridge. Update bridge.py on the PC and restart it."
+    }
+    // Folders used by the chosen group come first.
+    val folders = data?.folders.orEmpty().let { all ->
+        if (chosenGroup.isEmpty()) all else all.filter { chosenGroup in it.groups } + all.filter { chosenGroup !in it.groups }
+    }
+    LaunchedEffect(folders.firstOrNull()?.path, chosenGroup) {
+        if (folder == null || folders.none { it.path == folder }) folder = folders.firstOrNull()?.path
+        if (chosenGroup.isNotEmpty()) folders.firstOrNull { chosenGroup in it.groups }?.let { folder = it.path }
+    }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        containerColor = colors.surface,
+        title = { Text("New session", color = colors.text) },
+        text = {
+            Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = text, onValueChange = { text = it; error = null },
+                    label = { Text("First message") }, minLines = 2, maxLines = 4,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.text, unfocusedBorderColor = colors.border,
+                        focusedTextColor = colors.text, unfocusedTextColor = colors.text, cursorColor = colors.text,
+                        focusedLabelColor = colors.textSecondary, unfocusedLabelColor = colors.textSecondary,
+                    ),
+                )
+                if (!loaded) {
+                    CircularProgressIndicator(color = colors.accent, modifier = Modifier.size(24.dp))
+                }
+                val groups = data?.groups.orEmpty()
+                if (groups.isNotEmpty()) {
+                    Text("Group (on this phone)", style = MaterialTheme.typography.labelLarge, color = colors.textSecondary)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        (listOf("") + groups).forEach { g ->
+                            androidx.compose.material3.FilterChip(
+                                selected = chosenGroup == g, onClick = { chosenGroup = g },
+                                label = { Text(g.ifEmpty { "No group" }) },
+                            )
+                        }
+                    }
+                }
+                if (folders.isNotEmpty()) {
+                    Text("Folder on the PC", style = MaterialTheme.typography.labelLarge, color = colors.textSecondary)
+                    folders.take(8).forEach { f ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { folder = f.path }.padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            androidx.compose.material3.RadioButton(
+                                selected = folder == f.path, onClick = { folder = f.path },
+                                colors = androidx.compose.material3.RadioButtonDefaults.colors(selectedColor = colors.accent),
+                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(f.path.trimEnd('\\', '/').substringAfterLast('\\').substringAfterLast('/'),
+                                    color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(f.path, style = MaterialTheme.typography.bodySmall, color = colors.textSecondary,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+                Text(
+                    "Claude Code starts in this folder on the PC and gets your message as a normal prompt. " +
+                        "Approvals come to this phone.",
+                    style = MaterialTheme.typography.bodySmall, color = colors.textSecondary,
+                )
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy && folder != null && text.isNotBlank(),
+                onClick = {
+                    busy = true
+                    scope.launch {
+                        try {
+                            onStarted(vm.newSession(folder!!, text.trim(), chosenGroup.ifEmpty { null }))
+                        } catch (e: Exception) {
+                            error = e.message ?: "Could not start the session."
+                        }
+                        busy = false
+                    }
+                },
+            ) { Text(if (busy) "Starting…" else "Start", color = colors.accent) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel", color = colors.text) } },
+    )
+}
+
+@Composable
+private fun GroupHeader(name: String, count: Int, open: Boolean, onNew: (() -> Unit)?, onToggle: () -> Unit) {
     val colors = AppTheme.colors
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 6.dp),
@@ -303,6 +426,12 @@ private fun GroupHeader(name: String, count: Int, open: Boolean, onToggle: () ->
             )
             Spacer(Modifier.width(6.dp))
             Text("$count", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+        }
+        if (onNew != null) {
+            IconButton(onClick = onNew, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Outlined.Add, "New session in $name", tint = colors.textSecondary, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(8.dp))
         }
         Icon(
             if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
