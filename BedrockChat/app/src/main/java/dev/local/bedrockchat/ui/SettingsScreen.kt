@@ -40,6 +40,7 @@ import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Vibration
+import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -81,6 +82,8 @@ fun SettingsScreen(
     displayName: String,
     colorMode: ColorMode,
     haptics: Boolean,
+    chatNotifications: Boolean,
+    onChatNotifications: (Boolean) -> Unit,
     modelId: String,
     effort: Effort,
     onSelectModel: (String) -> Unit,
@@ -107,6 +110,12 @@ fun SettingsScreen(
     var regionBusy by remember { mutableStateOf<String?>(null) }
     var regionError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val notifyToggle = rememberChatNotificationToggle(onChatNotifications)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // Show the real state: without the permission, nothing can show.
+    val notifyOn = chatNotifications && (android.os.Build.VERSION.SDK_INT < 33 ||
+        androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) ==
+        android.content.pm.PackageManager.PERMISSION_GRANTED)
 
     Column(Modifier.fillMaxSize().background(colors.background).statusBarsPadding()) {
         Box(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp)) {
@@ -167,6 +176,14 @@ fun SettingsScreen(
             Spacer(Modifier.height(16.dp))
             CardGroup {
                 SettingRow(Icons.Outlined.DarkMode, "Color mode", colorMode.label, onClick = { pickColor = true })
+                GroupDivider()
+                SettingRow(Icons.Outlined.NotificationsNone, "Notify when Claude responds") {
+                    Switch(
+                        checked = notifyOn,
+                        onCheckedChange = notifyToggle,
+                        colors = SwitchDefaults.colors(checkedTrackColor = Color(0xFF2E7BE6), checkedThumbColor = Color.White),
+                    )
+                }
                 GroupDivider()
                 SettingRow(Icons.Outlined.Vibration, "Haptic feedback") {
                     Switch(

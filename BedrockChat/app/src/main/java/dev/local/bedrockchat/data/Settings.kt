@@ -113,6 +113,16 @@ class Settings(context: Context) {
         get() = prefs.getBoolean(KEY_ASKED_NAME, false)
         set(value) = prefs.edit().putBoolean(KEY_ASKED_NAME, value).apply()
 
+    /** Notify when a chat reply finishes while the app is in the background. Off until the user turns it on. */
+    var chatNotifications: Boolean
+        get() = prefs.getBoolean(KEY_CHAT_NOTIFICATIONS, false)
+        set(value) = prefs.edit().putBoolean(KEY_CHAT_NOTIFICATIONS, value).apply()
+
+    /** True after the "Get notified when Claude responds" card was answered or closed. */
+    var askedChatNotifications: Boolean
+        get() = prefs.getBoolean(KEY_ASKED_CHAT_NOTIFICATIONS, false)
+        set(value) = prefs.edit().putBoolean(KEY_ASKED_CHAT_NOTIFICATIONS, value).apply()
+
     private fun secretKey(): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
         (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
@@ -156,6 +166,8 @@ class Settings(context: Context) {
         const val KEY_NAME = "display_name"
         const val KEY_ASKED_NAME = "asked_name"
         const val KEY_PC_NOTIFICATIONS = "pc_notifications"
+        const val KEY_CHAT_NOTIFICATIONS = "chat_notifications"
+        const val KEY_ASKED_CHAT_NOTIFICATIONS = "asked_chat_notifications"
         const val KEY_BRIDGE_URL = "bridge_url"
         const val KEY_BRIDGE_TOKEN = "bridge_token"
         const val KEY_BRIDGE_NAME = "bridge_name"

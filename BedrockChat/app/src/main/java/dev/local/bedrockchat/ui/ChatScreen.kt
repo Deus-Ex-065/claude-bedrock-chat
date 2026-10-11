@@ -13,6 +13,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -64,6 +65,8 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -112,6 +115,8 @@ class ChatActions(
     val rename: (String, String) -> Unit,
     val toggleStar: (String) -> Unit,
     val delete: (String) -> Unit,
+    val setChatNotifications: (Boolean) -> Unit,
+    val dismissChatNotificationsOffer: () -> Unit,
 )
 
 @Composable
@@ -119,6 +124,7 @@ fun ChatScreen(
     state: ChatUiState,
     displayName: String,
     haptics: Boolean,
+    offerNotifications: Boolean,
     actions: ChatActions,
     onOpenDrawer: () -> Unit,
 ) {
@@ -139,6 +145,7 @@ fun ChatScreen(
     var selectText by remember { mutableStateOf<String?>(null) }
     var cameraFile by remember { mutableStateOf<File?>(null) }
 
+    val notifyToggle = rememberChatNotificationToggle(actions.setChatNotifications)
     val speechAvailable = remember { SpeechRecognizer.isRecognitionAvailable(context) }
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(10)) { uris ->
         if (uris.isNotEmpty()) actions.addAttachments(uris)
@@ -273,14 +280,25 @@ fun ChatScreen(
                                 onSelect = { selectText = message.text },
                                 onEdit = if (state.isStreaming) null else ({ editingId = message.id; input = message.text }),
                             )
-                            Role.ASSISTANT -> AssistantMessage(
-                                message = message,
-                                streaming = message.id == state.streamingId,
-                                waiting = message.id == state.streamingId && state.waiting,
-                                isLast = message == messages.last(),
-                                onCopy = ::copy,
-                                onRetry = actions.retry,
-                            )
+                            Role.ASSISTANT -> Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                                if (offerNotifications && message == messages.last()) {
+                                    NotifyCard(onTurnOn = { notifyToggle(true) }, onClose = actions.dismissChatNotificationsOffer)
+                                }
+                                AssistantMessage(
+                                    message = message,
+                                    streaming = message.id == state.streamingId,
+                                    waiting = message.id == state.streamingId && state.waiting,
+                                    isLast = message == messages.last(),
+                                    onCopy = ::copy,
+                                    onRetry = actions.retry,
+                                )
+                            }
+                        }
+                    }
+                    if (messages.last().role == Role.ASSISTANT && !state.isStreaming) {
+                        item {
+                            Text("Claude is AI and can make mistakes.", style = MaterialTheme.typography.bodySmall,
+                                color = colors.textSecondary, modifier = Modifier.padding(horizontal = 20.dp))
                         }
                     }
                     item { Spacer(Modifier.height(16.dp)) }
@@ -560,3 +578,34 @@ private fun formatDuration(ms: Long): String {
     return if (seconds < 60) "${seconds}s" else "${seconds / 60}m ${seconds % 60}s"
 }
 
+
+/** The offer to notify when a reply finishes. It shows once, above the latest reply, until you answer or close it. */
+@Composable
+private fun NotifyCard(onTurnOn: () -> Unit, onClose: () -> Unit) {
+    val colors = AppTheme.colors
+    Column(
+        Modifier
+            .padding(horizontal = 16.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(colors.surface)
+            .border(1.dp, colors.border, RoundedCornerShape(24.dp))
+            .padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 20.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.NotificationsNone, null, tint = colors.text, modifier = Modifier.padding(top = 12.dp))
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, "Close", tint = colors.textSecondary) }
+        }
+        Column(Modifier.padding(end = 12.dp)) {
+            Text("Get notified when Claude responds", style = MaterialTheme.typography.titleSmall, color = colors.text)
+            Spacer(Modifier.height(6.dp))
+            Text("You can leave the app while Claude writes. The reply continues, and the phone notifies you when it is ready.",
+                style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
+            Spacer(Modifier.height(16.dp))
+            OutlinedButton(onClick = onTurnOn, modifier = Modifier.fillMaxWidth(), border = BorderStroke(1.dp, colors.border)) {
+                Text("Turn on", color = colors.accent)
+            }
+        }
+    }
+}

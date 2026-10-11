@@ -159,3 +159,21 @@ fun IconCircle(icon: ImageVector, size: Int = 44, modifier: Modifier = Modifier)
         Icon(icon, null, tint = AppTheme.colors.text, modifier = Modifier.size((size * 0.5).dp))
     }
 }
+
+/**
+ * Turns "Notify when Claude responds" on or off. Turning it on asks for the notification permission
+ * first when Android needs it. If you deny it, the setting stays off.
+ */
+@Composable
+fun rememberChatNotificationToggle(set: (Boolean) -> Unit): (Boolean) -> Unit {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val ask = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted -> set(granted) }
+    return { want ->
+        val needsPermission = want && android.os.Build.VERSION.SDK_INT >= 33 &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (needsPermission) ask.launch(android.Manifest.permission.POST_NOTIFICATIONS) else set(want)
+    }
+}

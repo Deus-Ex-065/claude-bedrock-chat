@@ -48,8 +48,22 @@ class MainActivity : ComponentActivity() {
         handleOpen(intent)
     }
 
-    /** A tap on a PC notification opens that session. */
+    override fun onStart() {
+        super.onStart()
+        AppVisibility.inFront = true
+        ReplyService.clear(this)
+    }
+
+    override fun onStop() {
+        AppVisibility.inFront = false
+        super.onStop()
+    }
+
+    /** A tap on a notification opens that PC session or chat. */
     private fun handleOpen(intent: Intent?) {
         intent?.getStringExtra(PcWatchService.EXTRA_SESSION)?.let { PcScreenState.openRequest.value = it }
+        if (intent?.hasExtra(ReplyService.EXTRA_CHAT) == true) {
+            AppVisibility.openChat.value = intent.getStringExtra(ReplyService.EXTRA_CHAT)
+        }
     }
 }

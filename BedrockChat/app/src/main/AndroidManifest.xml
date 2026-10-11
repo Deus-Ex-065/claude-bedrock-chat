@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Lets the app ask to be left out of battery optimization, so phones do not stop the connection. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
@@ -39,6 +40,10 @@
             </intent-filter>
         </activity>
 
+        <service
+            android:name=".ReplyService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
         <service
             android:name=".PcWatchService"
             android:exported="false"

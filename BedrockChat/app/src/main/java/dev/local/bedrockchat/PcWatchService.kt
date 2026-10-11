@@ -183,7 +183,7 @@ class PcWatchService : Service() {
         private fun id(sid: String, kind: Int) = 1000 + (sid.hashCode() and 0xFFFFFF) * 2 + kind
 
         /** A short preview on one line: the full reply is in the app. Cut at a word, at about 160 characters. */
-        private fun preview(text: String?): String {
+        fun preview(text: String?): String {
             val clean = PHONE_QUOTE.replace(text.orEmpty(), "")
                 .replace(Regex("[*`#>|]"), "")
                 .replace(Regex("\\s+"), " ")

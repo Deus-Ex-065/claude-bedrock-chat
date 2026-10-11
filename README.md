@@ -16,6 +16,7 @@ Two parts that work together:
 - Chat with Claude models on Amazon Bedrock. Choose the model and the effort level.
 - Send images and files, use voice input, and read Markdown replies with code blocks.
 - Edit and resend messages, retry replies, star, rename, and delete chats, and use incognito chats.
+- Optional "Notify when Claude responds": a reply continues when you leave the app, and the phone notifies you when it is ready.
 - The API key is checked with one short request, then stored encrypted on the phone only.
 
 **Claude Code from the phone (app + bridge)**

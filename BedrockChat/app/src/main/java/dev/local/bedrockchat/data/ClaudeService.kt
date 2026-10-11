@@ -69,11 +69,11 @@ class ClaudeService(private val credentials: Credentials) {
         Routing.IN_REGION -> modelId
     }
 
-    fun stream(modelId: String, effort: Effort, history: List<ChatMessage>): Flow<StreamEvent> = callbackFlow {
+    fun stream(modelId: String, effort: Effort, history: List<ChatMessage>, userName: String = ""): Flow<StreamEvent> = callbackFlow {
         val params = MessageCreateParams.builder()
             .model(wire(modelId))
             .maxTokens(64_000L)
-            .system(systemPrompt())
+            .system(systemPrompt(modelId, userName))
             .messages(history.map(::toParam))
             .thinking(ThinkingConfigAdaptive.builder().display(ThinkingConfigAdaptive.Display.SUMMARIZED).build())
             .outputConfig(OutputConfig.builder().effort(OutputConfig.Effort.of(effort.apiValue)).build())
@@ -147,9 +147,17 @@ class ClaudeService(private val credentials: Credentials) {
         throw lastNotFound ?: IllegalStateException("No model to check.")
     }
 
-    private fun systemPrompt(): String {
+    /**
+     * Bedrock sends no system prompt of its own, so the model does not know its name unless the app tells it.
+     * The chat can switch models, so earlier replies may come from another model.
+     */
+    private fun systemPrompt(modelId: String, userName: String): String {
         val today = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy"))
-        return "You are Claude, an AI assistant made by Anthropic, chatting with the user in a mobile app. " +
+        val model = modelById(modelId).name
+        return "You are Claude $model, an AI assistant made by Anthropic, chatting with the user in a mobile app " +
+            "through Amazon Bedrock. If asked which model you are, say Claude $model. The user can switch models " +
+            "during a chat, so earlier replies in this conversation may come from another Claude model. " +
+            (if (userName.isNotBlank()) "The user's name is $userName. " else "") +
             "The current date is $today. Format replies with Markdown when it helps readability. " +
             "Keep the layout mobile-friendly: short paragraphs, and tables only with few columns."
     }

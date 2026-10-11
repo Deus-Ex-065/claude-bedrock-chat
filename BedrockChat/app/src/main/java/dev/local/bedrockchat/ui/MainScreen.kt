@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Computer
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
@@ -68,6 +69,8 @@ fun MainScreen(vm: ChatViewModel) {
     val state by vm.state.collectAsStateWithLifecycle()
     val summaries by vm.summaries.collectAsStateWithLifecycle()
     val displayName by vm.displayName.collectAsStateWithLifecycle()
+    val offerNotifications by vm.offerChatNotifications.collectAsStateWithLifecycle()
+    val chatNotifications by vm.chatNotifications.collectAsStateWithLifecycle()
     val haptics by vm.haptics.collectAsStateWithLifecycle()
     val credentials by vm.credentials.collectAsStateWithLifecycle()
     val colorMode by vm.colorMode.collectAsStateWithLifecycle()
@@ -88,6 +91,15 @@ fun MainScreen(vm: ChatViewModel) {
             screen = Screen.PC_SESSION
             scope.launch { drawer.close() }
             dev.local.bedrockchat.PcScreenState.openRequest.value = null
+        }
+    }
+    val openChat by dev.local.bedrockchat.AppVisibility.openChat.collectAsStateWithLifecycle()
+    LaunchedEffect(openChat) {
+        openChat?.let {
+            if (it.isNotBlank() && it != vm.state.value.conversation.id) vm.openChat(it)
+            screen = Screen.CHAT
+            scope.launch { drawer.close() }
+            dev.local.bedrockchat.AppVisibility.openChat.value = null
         }
     }
     LaunchedEffect(notice) {
@@ -115,6 +127,8 @@ fun MainScreen(vm: ChatViewModel) {
             rename = vm::renameChat,
             toggleStar = vm::toggleStar,
             delete = vm::deleteChat,
+            setChatNotifications = vm::setChatNotifications,
+            dismissChatNotificationsOffer = vm::dismissChatNotificationsOffer,
         )
     }
 
@@ -136,7 +150,7 @@ fun MainScreen(vm: ChatViewModel) {
     ) {
         Box(Modifier.fillMaxSize()) {
             when (screen) {
-                Screen.CHAT -> ChatScreen(state, displayName, haptics, actions, onOpenDrawer = { scope.launch { drawer.open() } })
+                Screen.CHAT -> ChatScreen(state, displayName, haptics, offerNotifications, actions, onOpenDrawer = { scope.launch { drawer.open() } })
                 Screen.CHATS -> ChatsScreen(
                     summaries = summaries,
                     onOpenDrawer = { scope.launch { drawer.open() } },
@@ -160,6 +174,8 @@ fun MainScreen(vm: ChatViewModel) {
                     displayName = displayName,
                     colorMode = colorMode,
                     haptics = haptics,
+                    chatNotifications = chatNotifications,
+                    onChatNotifications = vm::setChatNotifications,
                     modelId = state.modelId,
                     effort = state.effort,
                     onSelectModel = vm::setModel,
@@ -238,10 +254,10 @@ private fun DrawerContent(
                     Modifier.size(56.dp).clip(CircleShape).background(colors.accent).clickable(onClick = onSettings),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        displayName.firstOrNull()?.uppercase() ?: "B",
-                        color = Color.White, style = MaterialTheme.typography.titleSmall,
-                    )
+                    // Without a name, a person icon, not a made-up letter.
+                    displayName.firstOrNull()?.let {
+                        Text(it.uppercase(), color = Color.White, style = MaterialTheme.typography.titleSmall)
+                    } ?: Icon(Icons.Outlined.Person, "Profile", tint = Color.White)
                 }
                 Spacer(Modifier.weight(1f))
                 Row(

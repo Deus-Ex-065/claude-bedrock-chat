@@ -189,6 +189,26 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         _askName.value = false
     }
 
+    private val _chatNotifications = MutableStateFlow(settings.chatNotifications)
+    /** "Notify when Claude responds": keeps a reply running in the background and notifies when it finishes. */
+    val chatNotifications: StateFlow<Boolean> = _chatNotifications.asStateFlow()
+
+    private val _offerChatNotifications = MutableStateFlow(!settings.askedChatNotifications && !settings.chatNotifications)
+    /** True until the "Get notified when Claude responds" card is answered or closed. */
+    val offerChatNotifications: StateFlow<Boolean> = _offerChatNotifications.asStateFlow()
+
+    fun setChatNotifications(on: Boolean) {
+        settings.chatNotifications = on
+        settings.askedChatNotifications = true
+        _chatNotifications.value = on
+        _offerChatNotifications.value = false
+    }
+
+    fun dismissChatNotificationsOffer() {
+        settings.askedChatNotifications = true
+        _offerChatNotifications.value = false
+    }
+
     // ---- Conversations ----
 
     fun newChat(incognito: Boolean = false) {
@@ -355,7 +375,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
 
+        ReplyService.start(getApplication())
         streamJob = viewModelScope.launch {
+            var outcome: String? = null // The reply text for the notification; null when you stopped it.
+            var failed = false
             val text = StringBuilder()
             val thinking = StringBuilder()
             var thinkingStart = 0L
@@ -373,7 +396,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             try {
-                service.stream(s.modelId, s.effort, history).collect { event ->
+                service.stream(s.modelId, s.effort, history, settings.displayName).collect { event ->
                     when (event) {
                         is StreamEvent.ThinkingDelta -> {
                             if (thinkingStart == 0L) thinkingStart = System.currentTimeMillis()
@@ -401,6 +424,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
                 final?.let { done -> updateMessage(reply.id) { done } }
+                outcome = text.toString()
+                failed = final?.error != null
             } catch (e: kotlinx.coroutines.CancellationException) {
                 updateMessage(reply.id) {
                     it.copy(text = text.toString(), thinking = thinking.toString(), thinkingMillis = thinkingMillis, stopped = true)
@@ -410,8 +435,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 updateMessage(reply.id) {
                     it.copy(text = text.toString(), thinking = thinking.toString(), stopped = true, error = ClaudeService.rawError(e))
                 }
+                outcome = text.toString()
+                failed = true
             } finally {
                 _state.update { it.copy(streamingId = null, waiting = false) }
+                val done = _state.value
+                ReplyService.finish(getApplication(), done.conversation.id, done.conversation.title, outcome, failed, done.incognito)
                 persist()
                 maybeTitle()
             }
