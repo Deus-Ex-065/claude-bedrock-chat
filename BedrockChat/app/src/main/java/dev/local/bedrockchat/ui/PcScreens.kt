@@ -741,7 +741,14 @@ fun PcSessionScreen(vm: PcViewModel, state: PcUiState, onBack: () -> Unit) {
             }
             itemsIndexed(state.control.queued) { i, text ->
                 val qid = state.control.queuedIds.getOrNull(i)
-                UserBubble(text, note = "Sends when Claude finishes this turn", onDelete = qid?.let { { vm.unqueue(it) } })
+                // A session that was just opened or restarted on the PC listens only after its first turn.
+                val deaf = state.control.listening == false && session?.live == true && session.status != "busy" && activity == null
+                UserBubble(
+                    text,
+                    note = if (deaf) "Waits: the PC session is not listening yet. Type anything on the PC once."
+                    else "Sends when Claude finishes this turn",
+                    onDelete = qid?.let { { vm.unqueue(it) } },
+                )
             }
         }
         JumpButtons(listState, total)

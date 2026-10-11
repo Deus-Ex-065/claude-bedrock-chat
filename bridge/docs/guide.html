@@ -150,6 +150,10 @@ is a normal prompt and does not have this limit.</p>
   <li><b>Session open on the computer:</b> the message goes in when Claude finishes its current turn.
     If you type on the computer first, your typed prompt goes first and the phone message waits.</li>
   <li><b>Session closed:</b> the bridge continues the session on the computer with <code>claude -p --resume</code>.</li>
+  <li>A session that was just opened or restarted on the computer listens for phone messages only after its first
+    turn. Until then, a phone message waits and says so. Type anything on the computer once to start it.</li>
+  <li>If the session restarts just after a phone message went in, before Claude began work on it, the bridge puts the
+    message back in the queue, so it is not lost.</li>
   <li>A message that waits shows "Sends when Claude finishes this turn". Tap <b>Delete</b> next to it to remove it before it goes in.</li>
 </ul>
 <h3>Session groups</h3>

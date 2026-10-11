@@ -70,6 +70,8 @@ data class PcControl(
     val stopping: Boolean = false,
     /** True while the bridge runs `claude -p --resume` for this session. */
     @SerialName("running_here") val runningHere: Boolean = false,
+    /** True while the open session waits for a phone message. Null from a bridge before 0.13.1. */
+    val listening: Boolean? = null,
 )
 
 /** One message in Agent SDK shape. Content blocks are Claude API blocks: text, thinking, tool_use, tool_result. */

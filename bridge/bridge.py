@@ -227,6 +227,12 @@ def record_hook(data):
     elif name == "SessionEnd":
         event["reason"] = data.get("reason")
         _activity.pop(sid, None)
+    if name in ("UserPromptSubmit", "SessionStart", "SessionEnd"):
+        _listening.discard(sid)  # The waiter ended with the turn or the process.
+    if name in ("PreToolUse", "PostToolUse", "Stop"):
+        _inflight.pop(sid, None)  # Claude worked on the phone message, so it got it.
+    elif name in ("SessionStart", "SessionEnd") and sid in _inflight:
+        requeue_lost(sid)
     if sid in _stopping and name in ("PreToolUse", "PostToolUse", "Notification"):
         _activity[sid] = "Stopping"  # Until the turn ends, show that the stop is under way.
     # The PC dialog shows at the same time as the phone card. If the PC answers first, clear the card.
@@ -301,6 +307,8 @@ _pc_prompts = {}  # session id -> [(uuid of the message before it, text)]
 MAX_PC_PROMPTS = 100
 _headless = {}  # session id -> Popen of a `claude -p --resume` run for the phone
 _phone_groups = {}  # session id -> group name, for sessions started from the phone in a group
+_inflight = {}  # session id -> the phone message just delivered, until Claude shows that it got it
+_listening = set()  # Sessions whose waiter hook is connected now, so a phone message goes in at once
 
 
 def claude_env():
@@ -380,6 +388,7 @@ def control_state(sid):
             "queued": [q["text"] for q in _queued.get(sid, [])],
             "queued_ids": [q["id"] for q in _queued.get(sid, [])],
             "stopping": sid in _stopping,
+            "listening": sid in _listening,
             "running_here": bool(run and run.poll() is None),
         }
 
@@ -513,13 +522,19 @@ def wait_for_prompt(data):
         gen = _waiter_gen.get(sid, 0) + 1
         _waiter_gen[sid] = gen
         deadline = time.time() + PROMPT_WAIT
+        if sid not in _listening:
+            _listening.add(sid)
+            push_event({"event": "ControlChanged", "session_id": sid})
         while not _queued.get(sid) and _waiter_gen.get(sid) == gen and time.time() < deadline:
             _control.wait(min(60, deadline - time.time()))
         if _waiter_gen.get(sid) != gen:
             return DONE, None  # A newer waiter took over, or someone typed on the PC.
         if not _queued.get(sid):
-            return AGAIN, None
-        text = _queued[sid].pop(0)["text"]
+            return AGAIN, None  # The hook asks again at once, so the session still listens.
+        item = _queued[sid].pop(0)
+        text = item["text"]
+        _inflight[sid] = item
+        _listening.discard(sid)
         save_prompts()
         _stopping.discard(sid)  # A new turn starts.
     last = next((m["uuid"] for m in reversed(messages_raw(sid)) if m.get("uuid")), None)
@@ -540,6 +555,27 @@ def wait_for_prompt(data):
 STOP_NOTE = ("Stopped from the phone. (For Claude: the user stopped this turn. Do not call more tools. "
              "End your turn now with one short line: Stopped from the phone.)")
 OLD_STOP_NOTE = "The user stopped this turn from their phone."  # Wording before 0.8.2, still in old transcripts
+
+
+def requeue_lost(sid):
+    """Puts a delivered phone message back in the queue when its Claude Code process ended before it began work.
+
+    For example, the desktop app restarted the session just after the waiter delivered the message.
+    """
+    with _control:
+        item = _inflight.pop(sid, None)
+        if not item:
+            return
+        prompts = _phone_prompts.get(sid, [])
+        for i in range(len(prompts) - 1, -1, -1):
+            if prompts[i][1] == item["text"]:
+                del prompts[i]  # The bubble comes back as a queued message.
+                break
+        _queued.setdefault(sid, []).insert(0, item)
+        save_prompts()
+        _control.notify_all()
+    print(f"Queued a phone message again for session {sid[:8]}: its process ended before Claude began", flush=True)
+    control_changed(sid)
 
 
 def unqueue(sid, qid):
