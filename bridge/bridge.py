@@ -634,6 +634,45 @@ def session_entry(info, live):
     }
 
 
+# The Claude desktop app keeps its sidebar groups in its own data folder. The bridge only reads them.
+# Claude-3p is the folder for Bedrock and other third-party setups; Claude is the folder for a claude.ai sign-in.
+DESKTOP_DIRS = [Path(os.environ.get("LOCALAPPDATA", "")) / "Claude-3p", Path(os.environ.get("APPDATA", "")) / "Claude"]
+_desktop_ids = {}  # session file -> (mtime, Claude Code session id, desktop session id)
+
+
+def desktop_groups():
+    """Claude Code session id -> (group name, group position), from the desktop app's sidebar.
+
+    The desktop app does not document these files, so any error means "no groups", never a failure.
+    """
+    out = {}
+    for base in DESKTOP_DIRS:
+        try:
+            prefs = json.loads((base / "claude_desktop_config.json").read_text(encoding="utf-8"))
+            scopes = (prefs.get("preferences") or {}).get("epitaxyPrefs", {}).get("dframe-group-scopes") or {}
+        except (OSError, ValueError, AttributeError):
+            continue
+        desktop_to_cli = {}
+        for f in (base / "claude-code-sessions").glob("*/*/local_*.json"):
+            try:
+                mtime = f.stat().st_mtime
+                cached = _desktop_ids.get(f)
+                if not cached or cached[0] != mtime:
+                    d = json.loads(f.read_text(encoding="utf-8"))
+                    cached = _desktop_ids[f] = (mtime, d.get("cliSessionId"), d.get("sessionId"))
+            except (OSError, ValueError):
+                continue
+            if cached[1] and cached[2]:
+                desktop_to_cli[cached[2]] = cached[1]
+        for scope in scopes.values():
+            groups = {g.get("id"): (g.get("name") or "", i) for i, g in enumerate(scope.get("groups") or [])}
+            for key, gid in (scope.get("assignments") or {}).items():
+                cli = desktop_to_cli.get(key.removeprefix("code:"))
+                if cli and gid in groups:
+                    out[cli] = groups[gid]
+    return out
+
+
 def sessions(limit):
     live = live_sessions()
     entries = [session_entry(i, live) for i in list_sessions(limit=limit)]
@@ -642,6 +681,10 @@ def sessions(limit):
     for sid in live:
         if sid not in known and (info := get_session_info(sid)):
             entries.append(session_entry(info, live))
+    groups = desktop_groups()
+    for e in entries:
+        name, order = groups.get(e["session_id"], (None, None))
+        e["group"], e["group_order"] = name, order
     entries.sort(key=lambda e: (not e["live"], -(e["last_modified"] or 0)))
     return entries
 

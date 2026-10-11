@@ -135,6 +135,11 @@ A green dot means it is open and waiting. Tap a session to follow it live. Tap a
   <li><b>Session closed:</b> the bridge continues the session on the computer with <code>claude -p --resume</code>.</li>
   <li>A message that waits shows "Sends when Claude finishes this turn". Tap <b>Delete</b> next to it to remove it before it goes in.</li>
 </ul>
+<h3>Session groups</h3>
+<p>If you group sessions in the sidebar of the Claude desktop app, the phone shows the same groups in the same order.
+Sessions in no group come last, under <b>Sessions</b>. Tap a group name to collapse or expand it. The bridge reads the
+groups from the desktop app's settings files and never changes them. Sessions started in a terminal are in no group.</p>
+
 <h3>Context usage</h3>
 <p>The session header shows <b>Context</b> and a percentage: how much of the model's context window the session fills,
 from the tokens of Claude's last reply. Tap it to see the input, cache, and output tokens. Claude Code compacts the session

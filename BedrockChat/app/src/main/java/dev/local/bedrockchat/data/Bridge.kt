@@ -36,6 +36,9 @@ data class PcSession(
     val remote: Boolean = false,
     /** Permission requests waiting for the phone. */
     val pending: Int = 0,
+    /** The group the session is in on the PC's desktop app sidebar, or null when it is not in one. */
+    val group: String? = null,
+    @SerialName("group_order") val groupOrder: Int? = null,
 )
 
 /** A tool call that waits for Allow or Deny on the phone. */

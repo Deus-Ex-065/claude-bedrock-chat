@@ -69,6 +69,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -130,6 +132,7 @@ fun PcSessionsScreen(vm: PcViewModel, state: PcUiState, onOpenDrawer: () -> Unit
     LiveWhileVisible(vm)
     LaunchedEffect(state.link) { if (state.link != null) vm.refreshSessions() }
     var menu by remember { mutableStateOf(false) }
+    var collapsed by remember { mutableStateOf(setOf<String>()) }
 
     Column(Modifier.fillMaxSize().background(colors.background).statusBarsPadding()) {
         Box(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp)) {
@@ -173,8 +176,25 @@ fun PcSessionsScreen(vm: PcViewModel, state: PcUiState, onOpenDrawer: () -> Unit
                 color = colors.textSecondary, modifier = Modifier.padding(24.dp),
             )
             else -> LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
-                items(state.sessions, key = { it.id }) { session ->
-                    SessionRow(session, state.activity[session.id]) { onOpenSession(session.id) }
+                // The same groups as the PC's sidebar, in its order. Sessions in no group come last.
+                val sections = state.sessions.groupBy { it.group }.entries
+                    .sortedBy { (name, list) -> if (name == null) Int.MAX_VALUE else list.first().groupOrder ?: Int.MAX_VALUE - 1 }
+                val grouped = sections.any { it.key != null }
+                sections.forEach { (name, list) ->
+                    val key = name ?: ""
+                    val open = key !in collapsed
+                    if (grouped) {
+                        item(key = "group:$key") {
+                            GroupHeader(name ?: "Sessions", list.size, open) {
+                                collapsed = if (open) collapsed + key else collapsed - key
+                            }
+                        }
+                    }
+                    if (open) {
+                        items(list, key = { it.id }) { session ->
+                            SessionRow(session, state.activity[session.id]) { onOpenSession(session.id) }
+                        }
+                    }
                 }
             }
         }
@@ -266,6 +286,29 @@ private fun TrackVisibleSession(sessionId: String?) {
             owner.lifecycle.removeObserver(observer)
             PcScreenState.visibleSession = null
         }
+    }
+}
+
+@Composable
+private fun GroupHeader(name: String, count: Int, open: Boolean, onToggle: () -> Unit) {
+    val colors = AppTheme.colors
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                name, style = MaterialTheme.typography.labelLarge, color = colors.textSecondary,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text("$count", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+        }
+        Icon(
+            if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+            if (open) "Collapse $name" else "Expand $name",
+            tint = colors.textSecondary, modifier = Modifier.size(20.dp),
+        )
     }
 }
 
