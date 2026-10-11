@@ -151,6 +151,8 @@ desktop app's own variables before it runs <code>claude -p</code>, so <code>clau
 <p>If you group sessions in the sidebar of the Claude desktop app, the phone shows the same groups in the same order.
 Sessions in no group come last, under <b>Sessions</b>. Tap a group name to collapse or expand it. The bridge reads the
 groups from the desktop app's settings files and never changes them. Sessions started in a terminal are in no group.</p>
+<p>The phone loads only your 40 most recent sessions. So a group shows only its sessions that are among those 40, and
+it can show fewer than the sidebar on the computer. Older sessions in a group are not listed on the phone.</p>
 <p>The desktop app does not document these files, so an update can change them. If the bridge cannot find or read the
 groups, the phone shows the normal list without groups, and the bridge writes a short note in its window. Your sessions
 are not affected. To get the groups back after such an update, update <code>bridge.py</code>.</p>
