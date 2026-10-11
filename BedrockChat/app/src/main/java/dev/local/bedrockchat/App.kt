@@ -12,6 +12,9 @@ class App : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // The text selection menu that apps can add items to (Quote). Set explicitly; the default can vary by version.
+        @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+        androidx.compose.foundation.ComposeFoundationFlags.isNewContextMenuEnabled = true
         settings = Settings(this)
         store = ChatStore(this)
     }

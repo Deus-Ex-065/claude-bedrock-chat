@@ -65,6 +65,9 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.automirrored.outlined.VolumeUp
+import androidx.compose.material.icons.outlined.StopCircle
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material3.MaterialTheme
@@ -137,6 +140,9 @@ fun ChatScreen(
 
     var input by rememberSaveable(conversation.id) { mutableStateOf("") }
     var editingId by rememberSaveable(conversation.id) { mutableStateOf<String?>(null) }
+    var quote by rememberSaveable(conversation.id) { mutableStateOf<String?>(null) }
+    val readAloud = rememberReadAloud()
+    LaunchedEffect(conversation.id) { readAloud.stop() }
     var showAdd by remember { mutableStateOf(false) }
     var showModel by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
@@ -170,9 +176,11 @@ fun ChatScreen(
     fun submit() {
         if (haptics) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         val id = editingId
-        if (id != null) actions.editAndResend(id, input) else actions.send(input)
+        val text = withQuote(quote, input)
+        if (id != null) actions.editAndResend(id, text) else actions.send(text)
         input = ""
         editingId = null
+        quote = null
     }
 
     val listState = rememberLazyListState()
@@ -291,6 +299,10 @@ fun ChatScreen(
                                     isLast = message == messages.last(),
                                     onCopy = ::copy,
                                     onRetry = actions.retry,
+                                    speaking = readAloud.speakingId == message.id,
+                                    onReadAloud = { readAloud.toggle(message.id, message.text) },
+                                    onShare = { shareText(context, message.text) },
+                                    onQuote = { quote = it },
                                 )
                             }
                         }
@@ -324,6 +336,20 @@ fun ChatScreen(
         }
 
         Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 12.dp).padding(bottom = 8.dp)) {
+            quote?.let { quoted ->
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, bottom = 6.dp).height(IntrinsicSize.Min),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.width(3.dp).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(colors.accent))
+                    Spacer(Modifier.width(10.dp))
+                    Text(quoted, style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    IconButton(onClick = { quote = null }) {
+                        Icon(Icons.Outlined.Close, "Remove quote", tint = colors.textSecondary, modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
             if (editingId != null) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
@@ -459,16 +485,24 @@ private fun UserMessage(message: ChatMessage, onCopy: () -> Unit, onSelect: () -
         }
         if (message.text.isNotBlank()) {
             Box {
-                Text(
-                    message.text,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = colors.text,
-                    modifier = Modifier
+                val (quoted, body) = remember(message.text) { splitQuote(message.text) }
+                Column(
+                    Modifier
                         .clip(RoundedCornerShape(20.dp))
                         .background(colors.userBubble)
                         .combinedClickable(onClick = {}, onLongClick = { menu = true })
                         .padding(horizontal = 16.dp, vertical = 12.dp),
-                )
+                ) {
+                    if (quoted != null) {
+                        Row(Modifier.padding(bottom = 8.dp).height(IntrinsicSize.Min)) {
+                            Box(Modifier.width(3.dp).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(colors.accent))
+                            Spacer(Modifier.width(10.dp))
+                            Text(quoted, style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary,
+                                maxLines = 4, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    Text(body, style = MaterialTheme.typography.bodyLarge, color = colors.text)
+                }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = colors.surface) {
                     DropdownMenuItem(text = { Text("Copy message") }, leadingIcon = { Icon(Icons.Outlined.ContentCopy, null) },
                         onClick = { menu = false; onCopy() })
@@ -492,6 +526,10 @@ private fun AssistantMessage(
     isLast: Boolean,
     onCopy: (String) -> Unit,
     onRetry: () -> Unit,
+    speaking: Boolean,
+    onReadAloud: () -> Unit,
+    onShare: () -> Unit,
+    onQuote: (String) -> Unit,
 ) {
     val colors = AppTheme.colors
     var showThinking by rememberSaveable(message.id) { mutableStateOf(false) }
@@ -527,7 +565,10 @@ private fun AssistantMessage(
         }
 
         if (message.text.isNotEmpty()) {
-            MarkdownText(message.text, onCopyCode = onCopy)
+            // Long-press to select. The selection menu has Copy and Quote; Quote puts the text above the message box.
+            QuoteSelection(onQuote) {
+                MarkdownText(message.text, onCopyCode = onCopy)
+            }
         }
 
         if (streaming) {
@@ -560,6 +601,16 @@ private fun AssistantMessage(
                     IconButton(onClick = { onCopy(message.text); copied = true }) {
                         Icon(if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy, "Copy message",
                             tint = colors.textSecondary, modifier = Modifier.size(20.dp))
+                    }
+                }
+                if (message.text.isNotBlank()) {
+                    IconButton(onClick = onShare) {
+                        Icon(Icons.Outlined.Share, "Share message", tint = colors.textSecondary, modifier = Modifier.size(20.dp))
+                    }
+                    IconButton(onClick = onReadAloud) {
+                        Icon(if (speaking) Icons.Outlined.StopCircle else Icons.AutoMirrored.Outlined.VolumeUp,
+                            if (speaking) "Stop reading" else "Read aloud",
+                            tint = if (speaking) colors.accent else colors.textSecondary, modifier = Modifier.size(22.dp))
                     }
                 }
                 if (isLast) {
