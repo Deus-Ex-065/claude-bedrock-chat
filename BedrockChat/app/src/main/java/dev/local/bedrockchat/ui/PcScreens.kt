@@ -684,10 +684,12 @@ private fun UserBubble(text: String, note: String? = null, onDelete: (() -> Unit
         )
         note?.let {
             Row(Modifier.padding(top = 4.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = colors.textSecondary)
+                // The note wraps first, so "Delete" keeps its full width at large text sizes.
+                Text(it, style = MaterialTheme.typography.bodySmall, color = colors.textSecondary,
+                    modifier = Modifier.weight(1f, fill = false))
                 onDelete?.let { delete ->
                     Text(
-                        "Delete", style = MaterialTheme.typography.bodySmall, color = colors.accent,
+                        "Delete", style = MaterialTheme.typography.bodySmall, color = colors.accent, maxLines = 1, softWrap = false,
                         modifier = Modifier.padding(start = 6.dp).clip(RoundedCornerShape(6.dp)).clickable(onClick = delete)
                             .padding(horizontal = 6.dp, vertical = 4.dp),
                     )
