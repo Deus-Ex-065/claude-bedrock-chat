@@ -2,6 +2,8 @@ package dev.local.bedrockchat.ui
 
 import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -539,7 +541,10 @@ fun PcSessionScreen(vm: PcViewModel, state: PcUiState, onBack: () -> Unit) {
                 }
                 }
             }
-            items(state.control.queued) { UserBubble(it, note = "Sends when Claude finishes this turn") }
+            itemsIndexed(state.control.queued) { i, text ->
+                val qid = state.control.queuedIds.getOrNull(i)
+                UserBubble(text, note = "Sends when Claude finishes this turn", onDelete = qid?.let { { vm.unqueue(it) } })
+            }
         }
         JumpButtons(listState, total)
         }
@@ -565,6 +570,9 @@ fun PcSessionScreen(vm: PcViewModel, state: PcUiState, onBack: () -> Unit) {
             hint = if (session?.live == true) "Message Claude on ${state.link?.name ?: "PC"}" else "Continue this session",
             onSend = vm::send,
             confirmResume = session?.live != true,
+            working = state.connected && (activity != null || session?.status == "busy" || state.control.runningHere),
+            stopping = state.control.stopping,
+            onStop = vm::stop,
         )
     }
 }
@@ -662,7 +670,7 @@ private fun JumpButton(visible: Boolean, up: Boolean, modifier: Modifier, onClic
 }
 
 @Composable
-private fun UserBubble(text: String, note: String? = null) {
+private fun UserBubble(text: String, note: String? = null, onDelete: (() -> Unit)? = null) {
     val colors = AppTheme.colors
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
         Text(
@@ -675,8 +683,16 @@ private fun UserBubble(text: String, note: String? = null) {
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         )
         note?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall, color = colors.textSecondary,
-                modifier = Modifier.padding(top = 4.dp, end = 6.dp))
+            Row(Modifier.padding(top = 4.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = colors.textSecondary)
+                onDelete?.let { delete ->
+                    Text(
+                        "Delete", style = MaterialTheme.typography.bodySmall, color = colors.accent,
+                        modifier = Modifier.padding(start = 6.dp).clip(RoundedCornerShape(6.dp)).clickable(onClick = delete)
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
+                    )
+                }
+            }
         }
     }
 }
@@ -729,7 +745,14 @@ private fun ApprovalCard(request: PcPermission, onDecide: (allow: Boolean, alway
 }
 
 @Composable
-private fun Composer(hint: String, onSend: suspend (String) -> String?, confirmResume: Boolean) {
+private fun Composer(
+    hint: String,
+    onSend: suspend (String) -> String?,
+    confirmResume: Boolean,
+    working: Boolean,
+    stopping: Boolean,
+    onStop: () -> Unit,
+) {
     val colors = AppTheme.colors
     val scope = rememberCoroutineScope()
     var text by rememberSaveable { mutableStateOf("") }
@@ -789,16 +812,28 @@ private fun Composer(hint: String, onSend: suspend (String) -> String?, confirmR
             Spacer(Modifier.width(8.dp))
             // A plain round box, not an IconButton: an IconButton grows to 48 dp outside its size and covers the text.
             val canSend = text.isNotBlank() && !sending
+            // While Claude works and the box is empty, the button stops the turn. With text, it sends (the message waits).
+            val showStop = working && text.isBlank()
             Box(
                 Modifier
                     .padding(vertical = 2.dp)
                     .size(44.dp)
                     .clip(CircleShape)
-                    .background(if (text.isNotBlank()) colors.accent else colors.chip)
-                    .clickable(enabled = canSend) { if (confirmResume) confirming = true else send() },
+                    .background(if (text.isNotBlank() || (showStop && !stopping)) colors.accent else colors.chip)
+                    .clickable(enabled = canSend || (showStop && !stopping)) {
+                        when {
+                            showStop -> onStop()
+                            confirmResume -> confirming = true
+                            else -> send()
+                        }
+                    },
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Outlined.ArrowUpward, "Send", tint = if (text.isNotBlank()) Color.White else colors.textSecondary)
+                if (showStop) {
+                    Icon(Icons.Filled.Stop, if (stopping) "Stopping" else "Stop", tint = if (stopping) colors.textSecondary else Color.White)
+                } else {
+                    Icon(Icons.Outlined.ArrowUpward, "Send", tint = if (text.isNotBlank()) Color.White else colors.textSecondary)
+                }
             }
         }
     }

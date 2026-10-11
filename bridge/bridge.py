@@ -225,11 +225,19 @@ def record_hook(data):
     elif name == "SessionEnd":
         event["reason"] = data.get("reason")
         _activity.pop(sid, None)
+    if sid in _stopping and name in ("PreToolUse", "PostToolUse", "Notification"):
+        _activity[sid] = "Stopping"  # Until the turn ends, show that the stop is under way.
     # The PC dialog shows at the same time as the phone card. If the PC answers first, clear the card.
     if name == "PostToolUse":
         cancel_pending(sid, data.get("tool_name"), data.get("tool_input"))
     elif name in ("Stop", "UserPromptSubmit", "SessionEnd"):
         cancel_pending(sid)
+    if name in ("Stop", "UserPromptSubmit", "SessionEnd"):
+        with _control:
+            was = sid in _stopping
+            _stopping.discard(sid)
+        if was:
+            push_event({"event": "ControlChanged", "session_id": sid})
     if name in ("UserPromptSubmit", "SessionEnd"):
         release_waiter(sid)  # Someone typed on the PC, or the session closed.
         _last_reply.pop(sid, None)  # A new turn: the saved final reply is now in the transcript or out of date.
@@ -280,7 +288,8 @@ _control = threading.Condition()
 _remote = set()  # Sessions whose approvals go to the phone
 _phone_turns = set()  # Sessions whose current turn a phone message started
 _pending = {}  # request id -> permission request waiting for the phone
-_queued = {}  # session id -> phone messages not delivered yet
+_queued = {}  # session id -> [{"id", "text"}] phone messages not delivered yet
+_stopping = set()  # Sessions whose current turn the phone asked to stop. Cleared when the turn ends.
 _waiter_gen = {}  # session id -> number of the newest Stop waiter; older waiters give up
 _phone_prompts = {}  # session id -> [(uuid of the message before it, text)] delivered by the waiter
 # Prompts typed on the PC, from UserPromptSubmit. A prompt typed while Claude works goes in mid-turn, and the
@@ -301,7 +310,9 @@ def control_state(sid):
             "remote": sid in _remote,
             "pending": [{k: v for k, v in p.items() if k not in ("decision", "suggestions")}
                         for p in _pending.values() if p["session_id"] == sid],
-            "queued": list(_queued.get(sid, [])),
+            "queued": [q["text"] for q in _queued.get(sid, [])],
+            "queued_ids": [q["id"] for q in _queued.get(sid, [])],
+            "stopping": sid in _stopping,
             "running_here": bool(run and run.poll() is None),
         }
 
@@ -414,7 +425,8 @@ def wait_for_prompt(data):
             return DONE, None  # A newer waiter took over, or someone typed on the PC.
         if not _queued.get(sid):
             return AGAIN, None
-        text = _queued[sid].pop(0)
+        text = _queued[sid].pop(0)["text"]
+        _stopping.discard(sid)  # A new turn starts.
     last = next((m["uuid"] for m in reversed(messages_raw(sid)) if m.get("uuid")), None)
     _phone_prompts.setdefault(sid, []).append((last, text))
     _last_reply.pop(sid, None)  # A new turn starts, as for UserPromptSubmit.
@@ -425,6 +437,67 @@ def wait_for_prompt(data):
     return WAKE, PHONE_NOTE + text
 
 
+STOP_NOTE = ("The user stopped this turn from their phone. Do not call more tools. "
+             "End your turn now with one short line: Stopped from the phone.")
+
+
+def unqueue(sid, qid):
+    """Removes a phone message that was not delivered yet. False if it was delivered already."""
+    with _control:
+        queue = _queued.get(sid, [])
+        kept = [q for q in queue if q["id"] != qid]
+        found = len(kept) != len(queue)
+        _queued[sid] = kept
+    control_changed(sid)
+    return found
+
+
+def stop_session(sid):
+    """Stops the current turn. Messages that wait to send are removed too, so nothing starts again.
+
+    A `claude -p` run that the bridge started ends at once. An open session on the PC cannot be
+    interrupted from outside, so the next tool call is denied with STOP_NOTE, and Claude ends its turn.
+    A request that waits for approval on the phone is denied the same way.
+    """
+    with _control:
+        _queued.pop(sid, None)
+        run = _headless.get(sid)
+        headless = bool(run and run.poll() is None)
+        if not headless:
+            _stopping.add(sid)
+        held = [p["id"] for p in _pending.values() if p["session_id"] == sid and p["decision"] is None]
+    for rid in held:
+        decide(rid, "deny", message=STOP_NOTE)
+    if headless:
+        kill_tree(run)
+        result = "stopped"
+    else:
+        _activity[sid] = "Stopping"
+        result = "stopping"
+    control_changed(sid)
+    print(f"Phone stopped session {sid[:8]}", flush=True)
+    return result
+
+
+def kill_tree(proc):
+    """Ends a process and its children. On Windows, `claude` may run through a shell wrapper."""
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    else:
+        proc.terminate()
+
+
+def stop_check(data):
+    """Called by the PreToolUse stop hook. Returns the hook output, or None to let the tool run."""
+    sid = data.get("session_id")
+    with _control:
+        if sid not in _stopping:
+            return None
+    return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                   "permissionDecisionReason": STOP_NOTE}}
+
+
 def send_prompt(sid, text):
     """Queues a phone message for an open session, or runs it with `claude -p --resume` otherwise."""
     with _control:
@@ -432,7 +505,7 @@ def send_prompt(sid, text):
         busy_here = bool(run and run.poll() is None)
     if busy_here or sid in live_sessions():
         with _control:
-            _queued.setdefault(sid, []).append(text)
+            _queued.setdefault(sid, []).append({"id": secrets.token_hex(6), "text": text})
             _control.notify_all()
         control_changed(sid)
         return "queued"
@@ -458,7 +531,7 @@ def _after_headless(sid, proc):
         if _headless.get(sid) is proc:
             del _headless[sid]
         follow = _queued.get(sid) or []
-        nxt = follow.pop(0) if follow else None
+        nxt = follow.pop(0)["text"] if follow else None
     _activity.pop(sid, None)
     control_changed(sid)
     if nxt:
@@ -739,21 +812,21 @@ class Handler(BaseHTTPRequestHandler):
                 print(f"Paired {self.device_name()} from {self.client_address[0]}", flush=True)
                 return self._send(200, {"token": token, "name": socket.gethostname()})
             return self._send(403, {"error": error})
-        if url.path in ("/hooks/permission", "/hooks/wait"):
+        if url.path in ("/hooks/permission", "/hooks/wait", "/hooks/check"):
             if not self.is_local():
                 return self._send(403, {"error": "forbidden"})
             try:
                 data = json.loads(body or b"{}")
                 status = 200
-                if url.path == "/hooks/permission":
-                    out = permission_request(data)
+                if url.path in ("/hooks/permission", "/hooks/check"):
+                    out = permission_request(data) if url.path == "/hooks/permission" else stop_check(data)
                     reply = json.dumps(out).encode("utf-8") if out else b""
                 else:
                     status, text = wait_for_prompt(data)
                     reply = text.encode("utf-8") if text else b""
             except Exception as e:
                 print("control hook failed:", e, file=sys.stderr)
-                status, reply = (200 if url.path == "/hooks/permission" else AGAIN), b""
+                status, reply = (AGAIN if url.path == "/hooks/wait" else 200), b""
             # An empty body means no decision and no message, so Claude Code goes on as normal.
             return self._send(status, reply, "text/plain; charset=utf-8")
         if url.path.startswith("/api/"):
@@ -761,7 +834,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(401, {"error": "Not paired. Pair this device again."})
             try:
                 data = json.loads(body or b"{}")
-                m = re.fullmatch(r"/api/sessions/([0-9a-f-]{36})/(remote|prompt)", url.path)
+                m = re.fullmatch(r"/api/sessions/([0-9a-f-]{36})/(remote|prompt|stop|unqueue)", url.path)
+                if m and m.group(2) == "stop":
+                    return self._send(200, {"result": stop_session(m.group(1))})
+                if m and m.group(2) == "unqueue":
+                    found = unqueue(m.group(1), str(data.get("id", "")))
+                    return self._send(200 if found else 409, control_state(m.group(1)) if found
+                                      else {"error": "This message was already sent to Claude."})
                 if m and m.group(2) == "remote":
                     set_remote(m.group(1), bool(data.get("on")))
                     return self._send(200, control_state(m.group(1)))

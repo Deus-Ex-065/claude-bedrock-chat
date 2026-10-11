@@ -130,6 +130,18 @@ A green dot means it is open and waiting. Tap a session to follow it live. Tap a
   <li><b>Session open on the computer:</b> the message goes in when Claude finishes its current turn.
     If you type on the computer first, your typed prompt goes first and the phone message waits.</li>
   <li><b>Session closed:</b> the bridge continues the session on the computer with <code>claude -p --resume</code>.</li>
+  <li>A message that waits shows "Sends when Claude finishes this turn". Tap <b>Delete</b> next to it to remove it before it goes in.</li>
+</ul>
+<h3>Stop a turn</h3>
+<p>While Claude works and the message box is empty, the send button changes to a stop button (a square). Tap it to stop
+the turn. Messages that wait to send are removed too.</p>
+<ul>
+  <li><b>Session open on the computer:</b> Claude Code cannot be interrupted from outside, so the stop takes effect at
+    Claude's next tool call. The bridge refuses that call and tells Claude to end the turn. If Claude is only writing text,
+    the turn ends when the text is done. A request that waits for approval on the phone is denied.</li>
+  <li><b>A run that the bridge started</b> (<code>claude -p --resume</code>): it ends at once.</li>
+  <li>Stop needs the stop hook. If you set up the bridge before version 0.8.1, run
+    <code>python -I bridge/install_hooks.py --apply</code> again.</li>
 </ul>
 <h3>Approve requests</h3>
 <p>Turn on <b>Approve on this phone</b> in a session. Then tool requests come to the phone as a card

@@ -119,6 +119,26 @@ class PcViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun stop() {
+        val c = client ?: return
+        val id = _state.value.openId ?: return
+        viewModelScope.launch {
+            runCatching { c.stop(id) }
+                .onSuccess { refreshControl() }
+                .onFailure { e -> fail(if (e.message.orEmpty().contains("not found")) BridgeException(UPDATE_BRIDGE) else e) }
+        }
+    }
+
+    fun unqueue(queuedId: String) {
+        val c = client ?: return
+        val id = _state.value.openId ?: return
+        viewModelScope.launch {
+            runCatching { c.unqueue(id, queuedId) }
+                .onSuccess { control -> _state.update { if (it.openId == id) it.copy(control = control) else it } }
+                .onFailure { e -> refreshControl(); fail(e) }
+        }
+    }
+
     fun setRemote(on: Boolean) {
         val c = client ?: return
         val id = _state.value.openId ?: return
@@ -244,6 +264,7 @@ class PcViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private companion object {
+        const val UPDATE_BRIDGE = "Stop needs the new bridge. Update bridge.py on the PC and run install_hooks.py --apply."
         val REFRESH_EVENTS = setOf("UserPromptSubmit", "PostToolUse", "Stop", "SessionStart", "ControlChanged")
     }
 }

@@ -26,6 +26,7 @@ Two parts that work together:
 - Send a message to a session. An open session gets it when Claude finishes its turn. A closed session is
   continued with `claude -p --resume` (the app warns you first, because that costs more tokens).
 - Allow or deny tool requests (for example a shell command) from the phone.
+- Delete a message that waits to send, or stop the current turn (at its next tool call for a session open on the PC).
 - Get notifications for approvals and finished replies, also when the app is closed.
 
 ## Get started

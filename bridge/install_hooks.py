@@ -10,7 +10,8 @@ discarded, and it always exits 0. So it prints nothing (nothing reaches Claude's
 Claude (async), and logs no error when the bridge is not running.
 An `http` hook would be simpler, but Claude Code logs a non-blocking error for every event while the
 bridge is down.
-Two more hooks let the phone approve requests and send messages (see PERMISSION_HOOK and WAITER_HOOK).
+Three more hooks let the phone approve requests, send messages, and stop a turn (see PERMISSION_HOOK,
+WAITER_HOOK, and STOP_HOOK).
 Other hooks in the file are left as they are. Only the "hooks" section is printed, never the rest.
 """
 import json
@@ -59,7 +60,14 @@ WAITER_HOOK = {
     "asyncRewake": True,
     "timeout": 43200,
 }
-EXTRA = {"PermissionRequest": [PERMISSION_HOOK], "Stop": [WAITER_HOOK]}
+# PreToolUse stop check: curl prints the bridge reply. The reply is empty unless you tapped Stop on the phone.
+# Then it denies the tool call and asks Claude to end the turn. It is quick: the bridge answers at once.
+STOP_HOOK = {
+    "type": "command",
+    "command": f"curl -s -m 2 -H 'Content-Type: application/json' --data-binary @- {URL}/check 2>/dev/null; exit 0",
+    "timeout": 5,
+}
+EXTRA = {"PermissionRequest": [PERMISSION_HOOK], "Stop": [WAITER_HOOK], "PreToolUse": [STOP_HOOK]}
 
 
 def is_bridge(group):

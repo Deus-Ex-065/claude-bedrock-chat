@@ -54,6 +54,10 @@ data class PcControl(
     val pending: List<PcPermission> = emptyList(),
     /** Phone messages that wait for the session to finish its turn. */
     val queued: List<String> = emptyList(),
+    /** IDs of [queued], in the same order, to delete one. Empty from an older bridge. */
+    @SerialName("queued_ids") val queuedIds: List<String> = emptyList(),
+    /** True after you tapped Stop, until the turn ends. */
+    val stopping: Boolean = false,
     /** True while the bridge runs `claude -p --resume` for this session. */
     @SerialName("running_here") val runningHere: Boolean = false,
 )
@@ -106,6 +110,14 @@ class BridgeClient(private val link: BridgeLink) {
     suspend fun sendPrompt(sessionId: String, text: String): String =
         post<JsonObject>("/api/sessions/$sessionId/prompt", buildJsonObject { put("text", text) })["result"]
             ?.jsonPrimitive?.content ?: "queued"
+
+    /** Stops the current turn and removes the messages that wait to send. */
+    suspend fun stop(sessionId: String): String =
+        post<JsonObject>("/api/sessions/$sessionId/stop", buildJsonObject {})["result"]?.jsonPrimitive?.content ?: "stopping"
+
+    /** Deletes a phone message that was not sent to Claude yet. */
+    suspend fun unqueue(sessionId: String, queuedId: String): PcControl =
+        post("/api/sessions/$sessionId/unqueue", buildJsonObject { put("id", queuedId) })
 
     suspend fun decide(requestId: String, allow: Boolean, always: Boolean = false) {
         post<JsonObject>("/api/permissions/$requestId", buildJsonObject {
