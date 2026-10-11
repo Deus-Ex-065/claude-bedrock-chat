@@ -1,37 +1,50 @@
 # Bedrock Chat and Claude Code Phone Bridge
 
+> [!IMPORTANT]
+> **Built for an Amazon Bedrock API key.** The official Claude Android app signs in with a claude.ai account only.
+> It cannot use Amazon Bedrock, and it cannot take a Bedrock API key. Bedrock Chat fills that gap: you enter your own
+> Bedrock API key and region, and the app talks to Claude in Amazon Bedrock directly from the phone.
+> It does not support claude.ai accounts or Anthropic API keys. If you have a claude.ai account, use the official app.
+
 Two parts that work together:
 
 | Part | What it is |
 |---|---|
 | **Bedrock Chat** (`BedrockChat/`) | An Android app for chatting with Claude through your own **Amazon Bedrock API key**. It also has a **PC sessions** screen that connects to the bridge. |
-| **Phone bridge** (`bridge/`) | A small Python server on your computer. It lets the phone follow, message, and approve **Claude Code** sessions that run on that computer. |
+| **Phone bridge** (`bridge/`) | A small Python server on your computer. It lets the phone follow, message, and approve **Claude Code** sessions that run on that computer. Useful when Claude Code also runs on Bedrock, because Remote Control in the official app needs a claude.ai account. |
 
 > This is a personal project. It is not made by or affiliated with Anthropic or Amazon. It uses only
 > documented interfaces: the Amazon Bedrock API, Claude Code hooks, `claude agents`, and the Claude Agent SDK.
 
 ## What you can do
 
-**Chat (Bedrock Chat app)**
-- Chat with Claude models on Amazon Bedrock. Choose the model and the effort level.
-- Send images and files, use voice input, and read Markdown replies with code blocks.
+**Chat with Claude on Bedrock (Bedrock Chat app)**
+- Sign in with a Bedrock API key and a region. Global, geographic, and in-region routing are supported. The key is checked with one short request, then stored encrypted on the phone only.
+- Choose the model (Fable, Opus, Sonnet, and Haiku, including older versions) and the effort level.
+- Send images, PDFs, and text files. Use voice input. Replies show Markdown and code blocks, and the summarized thinking.
 - Edit and resend messages, retry replies, star, rename, and delete chats, and use incognito chats.
 - Share a reply, have it read aloud, or select part of it and tap **Quote** to reply to that part.
-- Share a link and Claude reads it: web pages and PDFs, downloaded by your phone (Bedrock has no web tools). Local network addresses are refused. Turn it off under **Settings → Capabilities**.
-- Memory across chats: Claude saves short items it should remember (or that you ask it to) and uses them in new chats. It stays on the phone, costs no extra requests, and you can see and delete each item under **Settings → Capabilities**. Incognito chats do not use it.
-- Context usage: the chat **⋮** menu shows how much of the model's context the chat fills, with the input, cache, and output tokens of the last reply. PC sessions show a **Context %** chip in the header; tap it for the same details.
-- PC sessions keep the groups from the Claude desktop app sidebar, in the same order. Sessions in no group come last, under **Sessions**. Tap a group name to collapse it. The phone lists only the 40 most recent sessions, so a group can show fewer sessions than the sidebar. If the bridge can't read the groups (for example after a desktop app update), the phone shows the normal list.
-- Chat search: ask about an earlier chat and Claude searches your chats on the phone, then reads the one it needs. Turn it off under **Settings → Capabilities**. Incognito chats do not use it.
-- Optional "Notify when Claude responds": a reply continues when you leave the app, and the phone notifies you when it is ready.
-- The API key is checked with one short request, then stored encrypted on the phone only.
+- **Read links:** share a link and Claude reads it: web pages and PDFs, downloaded by your phone (Bedrock has no web tools). Local network addresses are refused.
+- **Memory across chats:** Claude saves short items it should remember (or that you ask it to) and uses them in new chats. It stays on the phone, costs no extra requests, and you can see and delete each item.
+- **Chat search:** ask about an earlier chat and Claude searches your chats on the phone, then reads the one it needs.
+- **Context usage:** the chat **⋮** menu shows how much of the model's context the chat fills, with the input, cache, and output tokens of the last reply.
+- Optional **Notify when Claude responds:** a reply continues when you leave the app, and the phone notifies you when it is ready.
+- Read links, memory, and chat search can each be turned off under **Settings → Capabilities**. Incognito chats use no memory and no chat search.
 
 **Claude Code from the phone (app + bridge)**
-- See all Claude Code sessions on the computer and follow each one live.
+- See the Claude Code sessions on the computer and follow each one live: replies, thinking, tool calls, and results.
+- Sessions keep the groups from the Claude desktop app sidebar, in the same order. Sessions in no group come last, under **Sessions**. Tap a group name to collapse it. The phone lists only the 40 most recent sessions, so a group can show fewer sessions than the sidebar. If the bridge can't read the groups (for example after a desktop app update), the phone shows the normal list.
 - Send a message to a session. An open session gets it when Claude finishes its turn. A closed session is
   continued with `claude -p --resume` (the app warns you first, because that costs more tokens).
 - Allow or deny tool requests (for example a shell command) from the phone.
 - Delete a message that waits to send, or stop the current turn (at its next tool call for a session open on the PC).
+- A **Context %** chip in the session header shows how full the session's context is. Tap it for details.
 - Get notifications for approvals and finished replies, also when the app is closed.
+- Phone messages, and the PC prompts typed during a turn, stay visible after the bridge restarts. A phone message that a restarting session never started on goes back in the queue.
+
+**Limits to know**
+- A message to a session that is open on the PC reaches Claude through a hook. Claude Code marks hook text as "not user input", so Claude may ask you to confirm risky steps on the PC or through an approval on the phone.
+- The bridge works on your local network only. Access away from home is planned (see below).
 
 ## Get started
 
@@ -67,8 +80,8 @@ Details are in section 7 of the setup guide.
 - The phone gets a secret token when it pairs. Every request needs it. Pairing codes work one time and expire after 10 minutes.
 - Hook events and pairing codes are accepted from the computer itself only.
 - The connection is plain HTTP on your local network. **Do not forward the port or expose it to the internet.**
-- The bridge keeps its token in `bridge/.bridge-token`. This file, `.paired-devices.json`, and
-  `.approve-on-phone.json` are local state and are excluded from git.
+- The bridge keeps its token in `bridge/.bridge-token`. This file, `.paired-devices.json`,
+  `.approve-on-phone.json`, and `.session-prompts.json` are local state and are excluded from git.
 - Notifications have no Allow button, so a locked phone cannot approve a command.
 
 ## Repository layout
