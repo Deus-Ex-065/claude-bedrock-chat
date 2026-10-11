@@ -321,7 +321,7 @@ def control_state(sid):
 REMOTE_FILE = HERE / ".approve-on-phone.json"  # Keeps the phone switch through bridge restarts
 
 
-PROMPTS_FILE = HERE / ".session-prompts.json"  # Phone and mid-turn PC prompts, through bridge restarts
+PROMPTS_FILE = HERE / ".session-prompts.json"  # Phone, queued, and mid-turn PC prompts, through bridge restarts
 
 
 def load_prompts():
@@ -332,11 +332,14 @@ def load_prompts():
     for key, target in (("phone", _phone_prompts), ("pc", _pc_prompts)):
         for sid, items in (data.get(key) or {}).items():
             target[sid] = [(after, text) for after, text in items]
+    for sid, items in (data.get("queued") or {}).items():
+        if items:
+            _queued[sid] = [q for q in items if isinstance(q, dict) and q.get("text")]
 
 
 def save_prompts():
     """Call with _control held."""
-    data = {"phone": _phone_prompts, "pc": _pc_prompts}
+    data = {"phone": _phone_prompts, "pc": _pc_prompts, "queued": {k: v for k, v in _queued.items() if v}}
     try:
         PROMPTS_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     except OSError as e:
@@ -449,6 +452,7 @@ def wait_for_prompt(data):
         if not _queued.get(sid):
             return AGAIN, None
         text = _queued[sid].pop(0)["text"]
+        save_prompts()
         _stopping.discard(sid)  # A new turn starts.
     last = next((m["uuid"] for m in reversed(messages_raw(sid)) if m.get("uuid")), None)
     with _control:
@@ -477,6 +481,7 @@ def unqueue(sid, qid):
         kept = [q for q in queue if q["id"] != qid]
         found = len(kept) != len(queue)
         _queued[sid] = kept
+        save_prompts()
     control_changed(sid)
     return found
 
@@ -490,6 +495,7 @@ def stop_session(sid):
     """
     with _control:
         _queued.pop(sid, None)
+        save_prompts()
         run = _headless.get(sid)
         headless = bool(run and run.poll() is None)
         if not headless:
@@ -535,6 +541,7 @@ def send_prompt(sid, text):
     if busy_here or sid in live_sessions():
         with _control:
             _queued.setdefault(sid, []).append({"id": secrets.token_hex(6), "text": text})
+            save_prompts()
             _control.notify_all()
         control_changed(sid)
         return "queued"
@@ -561,6 +568,7 @@ def _after_headless(sid, proc):
             del _headless[sid]
         follow = _queued.get(sid) or []
         nxt = follow.pop(0)["text"] if follow else None
+        save_prompts()
     _activity.pop(sid, None)
     control_changed(sid)
     if nxt:

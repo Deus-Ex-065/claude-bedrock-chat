@@ -110,12 +110,12 @@ You must pair again only in these cases:</p>
   <tr><td>The computer's network address changed</td><td>The app keeps the old address. Unpair, then pair with the new address.
     To prevent this, reserve a fixed address for the computer in your router settings.</td></tr>
 </table>
-<p>The bridge also keeps the messages that you sent from the phone, and the messages that you typed on the computer while
+<p>The bridge also keeps the messages that you sent from the phone (also the ones that still wait to send), and the messages that you typed on the computer while
 Claude worked, in <code>bridge/.session-prompts.json</code>. Claude Code's session list does not show these, so the phone needs this file
 to show them. If you move the bridge to a new folder or computer, copy this file with <code>.bridge-token</code>.</p>
 <p>Messages and approvals also continue after a bridge restart, and each <b>Approve on this phone</b>
-switch stays as you set it. A phone message that waits for an open
-session is kept only while the bridge runs, so send it again if you restart the bridge before it is delivered.</p>
+switch stays as you set it. A phone message that waits for an open session also stays in the queue
+(it is kept in <code>.session-prompts.json</code>), and it goes in when Claude finishes its turn.</p>
 
 <h2>6. Use it</h2>
 <div class="shots">
