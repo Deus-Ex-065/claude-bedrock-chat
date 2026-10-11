@@ -9,6 +9,7 @@ import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.AltRoute
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Key
@@ -89,6 +90,8 @@ fun SettingsScreen(
     onChatNotifications: (Boolean) -> Unit,
     readLinks: Boolean,
     onReadLinks: (Boolean) -> Unit,
+    searchChats: Boolean,
+    onSearchChats: (Boolean) -> Unit,
     memoryOn: Boolean,
     onMemory: (Boolean) -> Unit,
     memoryItems: List<String>,
@@ -210,6 +213,14 @@ fun SettingsScreen(
                     Switch(
                         checked = readLinks,
                         onCheckedChange = onReadLinks,
+                        colors = SwitchDefaults.colors(checkedTrackColor = Color(0xFF2E7BE6), checkedThumbColor = Color.White),
+                    )
+                }
+                GroupDivider()
+                SettingRow(Icons.Outlined.History, "Search chats", "Claude can look through your earlier chats on this phone.") {
+                    Switch(
+                        checked = searchChats,
+                        onCheckedChange = onSearchChats,
                         colors = SwitchDefaults.colors(checkedTrackColor = Color(0xFF2E7BE6), checkedThumbColor = Color.White),
                     )
                 }

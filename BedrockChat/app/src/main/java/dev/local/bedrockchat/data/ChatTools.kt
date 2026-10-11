@@ -31,12 +31,17 @@ class ToolOutput(val blocks: List<ToolResultBlockParam.Content.Block>, val isErr
  * The client tools that the app runs on the phone. Bedrock has no server tools (web search, web fetch),
  * so the phone does the work itself and sends the result back to Claude.
  */
-class ChatTools(private val readLinks: Boolean, private val memory: MemoryStore? = null) {
+class ChatTools(
+    private val readLinks: Boolean,
+    private val memory: MemoryStore? = null,
+    private val chats: ChatSearch? = null,
+) {
 
     val definitions: List<Tool>
         get() = buildList {
             if (readLinks) add(READ_LINK)
             if (memory != null) add(UPDATE_MEMORY)
+            if (chats != null) { add(SEARCH_CHATS); add(READ_CHAT) }
         }
 
     val isEmpty get() = definitions.isEmpty()
@@ -48,7 +53,10 @@ class ChatTools(private val readLinks: Boolean, private val memory: MemoryStore?
                 "You cannot search the web, so use links that the user gave or that you are sure exist. "
         } else {
             "You cannot open links or search the web. If the user shares a link, say that link reading is off in Settings. "
-        }) + memoryNote()
+        }) + (if (chats != null) {
+            "You can search the user's earlier chats in this app with search_chats, and read one with read_chat. Use them when " +
+                "the user refers to an earlier conversation, or when earlier context would clearly help. "
+        } else "") + memoryNote()
 
     /** The memory goes into the system prompt, so Claude has it without a tool call. */
     private fun memoryNote(): String {
@@ -72,6 +80,15 @@ class ChatTools(private val readLinks: Boolean, private val memory: MemoryStore?
             "replace" -> ToolLabel("Updating memory…", "Updated memory", "Couldn't change memory")
             else -> ToolLabel("Saving to memory…", "Saved to memory", "Couldn't save to memory")
         }
+        SEARCH_CHATS_NAME -> {
+            val q = runCatching { JSONObject(inputJson).optString("query") }.getOrNull().orEmpty().take(40)
+            ToolLabel("Searching chats for \"$q\"…", "Searched chats for \"$q\"", "Couldn't search chats")
+        }
+        READ_CHAT_NAME -> {
+            val title = runCatching { chats?.titleOf(JSONObject(inputJson).optString("id")) }.getOrNull()
+            val what = title?.let { "\"${it.take(40)}\"" } ?: "an earlier chat"
+            ToolLabel("Reading $what…", "Read $what", "Couldn't read $what")
+        }
         else -> ToolLabel("Using $name…", "Used $name", "$name failed")
     }
 
@@ -80,11 +97,15 @@ class ChatTools(private val readLinks: Boolean, private val memory: MemoryStore?
         when (name) {
             READ_LINK_NAME -> if (readLinks) readLink(JSONObject(inputJson).optString("url")) else error("Link reading is off.")
             UPDATE_MEMORY_NAME -> updateMemory(JSONObject(inputJson))
+            SEARCH_CHATS_NAME -> plain((chats ?: error("Chat search is off for this chat.")).search(JSONObject(inputJson).optString("query")))
+            READ_CHAT_NAME -> plain((chats ?: error("Chat search is off for this chat.")).read(JSONObject(inputJson).optString("id")))
             else -> error("Unknown tool: $name")
         }
     } catch (e: Exception) {
         ToolOutput(listOf(ToolResultBlockParam.Content.Block.ofText(e.message ?: e.javaClass.simpleName)), isError = true)
     }
+
+    private fun plain(text: String) = ToolOutput(listOf(ToolResultBlockParam.Content.Block.ofText(text)), isError = false)
 
     private fun updateMemory(input: JSONObject): ToolOutput {
         val store = memory ?: error("Memory is off for this chat.")
@@ -241,7 +262,43 @@ class ChatTools(private val readLinks: Boolean, private val memory: MemoryStore?
         const val UPDATE_MEMORY_NAME = "update_memory"
 
         /** Every tool the app has. Old tool turns in a chat need their definitions, even when a tool is off now. */
-        val ALL: List<Tool> get() = listOf(READ_LINK, UPDATE_MEMORY)
+        val ALL: List<Tool> get() = listOf(READ_LINK, UPDATE_MEMORY, SEARCH_CHATS, READ_CHAT)
+
+        const val SEARCH_CHATS_NAME = "search_chats"
+        const val READ_CHAT_NAME = "read_chat"
+
+        private val SEARCH_CHATS: Tool = Tool.builder()
+            .name(SEARCH_CHATS_NAME)
+            .description(
+                "Search the user's earlier chats in this app by keywords. Returns up to 5 matching chats with their id, " +
+                    "date, and short excerpts. The chat that is open now is not included."
+            )
+            .inputSchema(
+                Tool.InputSchema.builder()
+                    .properties(
+                        Tool.InputSchema.Properties.builder()
+                            .putAdditionalProperty("query", prop("string", "A few keywords, for example: trip Goa hotel."))
+                            .build()
+                    )
+                    .required(listOf("query"))
+                    .build()
+            )
+            .build()
+
+        private val READ_CHAT: Tool = Tool.builder()
+            .name(READ_CHAT_NAME)
+            .description("Read one earlier chat in full, by the id that search_chats returned. Long chats are cut.")
+            .inputSchema(
+                Tool.InputSchema.builder()
+                    .properties(
+                        Tool.InputSchema.Properties.builder()
+                            .putAdditionalProperty("id", prop("string", "The chat id from search_chats."))
+                            .build()
+                    )
+                    .required(listOf("id"))
+                    .build()
+            )
+            .build()
 
         private fun prop(type: String, description: String, enum: List<String>? = null): JsonValue =
             JsonValue.from(buildMap {

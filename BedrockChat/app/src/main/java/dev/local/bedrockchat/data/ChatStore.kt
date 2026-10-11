@@ -99,6 +99,10 @@ class ChatStore(context: Context) {
         if (!file.exists()) null else runCatching { json.decodeFromString<Conversation>(file.readText()) }.getOrNull()
     }
 
+    /** Every saved chat. It blocks: for tools, which run on a background thread. */
+    fun allBlocking(): List<Conversation> = dir.listFiles { f -> f.extension == "json" }.orEmpty()
+        .mapNotNull { file -> runCatching { json.decodeFromString<Conversation>(file.readText()) }.getOrNull() }
+
     suspend fun save(conversation: Conversation) {
         withContext(Dispatchers.IO) {
             val tmp = File(dir, "${conversation.id}.json.tmp")

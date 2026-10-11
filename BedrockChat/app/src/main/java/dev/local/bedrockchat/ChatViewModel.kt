@@ -21,6 +21,7 @@ import dev.local.bedrockchat.data.Routing
 import dev.local.bedrockchat.data.Role
 import dev.local.bedrockchat.data.StreamEvent
 import dev.local.bedrockchat.data.ChatTools
+import dev.local.bedrockchat.data.ChatSearch
 import dev.local.bedrockchat.data.ToolCall
 import dev.local.bedrockchat.data.ToolStatus
 import dev.local.bedrockchat.data.TITLE_MODEL_ID
@@ -207,6 +208,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     val memoryOn: StateFlow<Boolean> = _memoryOn.asStateFlow()
     val memoryItems: StateFlow<List<String>> = memory.items
     fun setMemory(on: Boolean) { settings.memory = on; _memoryOn.value = on }
+
+    private val _searchChats = MutableStateFlow(settings.searchChats)
+    /** "Search chats": Claude can look through earlier chats. Not in incognito chats. */
+    val searchChats: StateFlow<Boolean> = _searchChats.asStateFlow()
+    fun setSearchChats(on: Boolean) { settings.searchChats = on; _searchChats.value = on }
     fun deleteMemoryItem(index: Int) = memory.removeAt(index)
     fun clearMemory() = memory.clear()
 
@@ -413,7 +419,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             try {
-                service.stream(s.modelId, s.effort, history, settings.displayName, ChatTools(settings.readLinks, memory.takeIf { settings.memory && !s.incognito })).collect { event ->
+                service.stream(s.modelId, s.effort, history, settings.displayName, ChatTools(
+                    readLinks = settings.readLinks,
+                    memory = memory.takeIf { settings.memory && !s.incognito },
+                    chats = ChatSearch(store, s.conversation.id).takeIf { settings.searchChats && !s.incognito },
+                )).collect { event ->
                     when (event) {
                         is StreamEvent.ThinkingDelta -> {
                             if (thinkingStart == 0L) thinkingStart = System.currentTimeMillis()
