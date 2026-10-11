@@ -741,7 +741,11 @@ def sessions(limit):
     for sid in live:
         if sid not in known and (info := get_session_info(sid)):
             entries.append(session_entry(info, live))
-    groups = desktop_groups()
+    try:
+        groups = desktop_groups()
+    except Exception as e:  # The desktop app's files changed shape. Show the plain list.
+        print("Could not read the desktop sidebar groups:", e, file=sys.stderr)
+        groups = {}
     for e in entries:
         name, order = groups.get(e["session_id"], (None, None))
         e["group"], e["group_order"] = name, order
