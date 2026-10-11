@@ -15,6 +15,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -113,8 +118,12 @@ fun Composer(
                     maxLines = 1, softWrap = false)
                 Spacer(Modifier.width(6.dp))
                 // The effort label gives way first; the model name matters more.
+                // If the label does not fit (large text sizes), hide it instead of showing "..".
+                var effortFits by remember(effort, modelId) { mutableStateOf(true) }
                 Text(effort.label, style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary,
-                    maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
+                    onTextLayout = { if (it.hasVisualOverflow) effortFits = false },
+                    modifier = Modifier.weight(1f, fill = false).alpha(if (effortFits) 1f else 0f))
             }
             }
             Spacer(Modifier.width(8.dp))

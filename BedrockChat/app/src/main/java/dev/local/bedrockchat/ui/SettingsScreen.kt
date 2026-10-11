@@ -111,11 +111,8 @@ fun SettingsScreen(
     var regionError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val notifyToggle = rememberChatNotificationToggle(onChatNotifications)
-    val context = androidx.compose.ui.platform.LocalContext.current
     // Show the real state: without the permission, nothing can show.
-    val notifyOn = chatNotifications && (android.os.Build.VERSION.SDK_INT < 33 ||
-        androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) ==
-        android.content.pm.PackageManager.PERMISSION_GRANTED)
+    val notifyOn = chatNotifications && rememberNotificationPermission()
 
     Column(Modifier.fillMaxSize().background(colors.background).statusBarsPadding()) {
         Box(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp)) {

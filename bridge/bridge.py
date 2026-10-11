@@ -198,6 +198,7 @@ def record_hook(data):
     if name == "UserPromptSubmit":
         event["prompt"] = data.get("prompt", "")
         _activity[sid] = "Thinking"
+        remember_pc_prompt(sid, event["prompt"])
     elif name == "PreToolUse":
         event["tool"] = data.get("tool_name")
         event["input"] = brief_input(data.get("tool_input"))
@@ -237,6 +238,22 @@ def record_hook(data):
     push_event(event)
 
 
+def remember_pc_prompt(sid, prompt):
+    """Notes where a PC prompt goes in the history. Reads the transcript in a thread, so the hook answers at once."""
+    text = clean_user_text(prompt or "")
+    if not text or not text.strip():
+        return
+
+    def note():
+        last = next((m["uuid"] for m in reversed(messages_raw(sid)) if m.get("uuid")), None)
+        with _control:
+            prompts = _pc_prompts.setdefault(sid, [])
+            prompts.append((last, text))
+            del prompts[:-MAX_PC_PROMPTS]
+
+    threading.Thread(target=note, daemon=True).start()
+
+
 def push_event(event):
     """Adds an event to the feed and wakes the stream listeners."""
     global _seq
@@ -266,6 +283,10 @@ _pending = {}  # request id -> permission request waiting for the phone
 _queued = {}  # session id -> phone messages not delivered yet
 _waiter_gen = {}  # session id -> number of the newest Stop waiter; older waiters give up
 _phone_prompts = {}  # session id -> [(uuid of the message before it, text)] delivered by the waiter
+# Prompts typed on the PC, from UserPromptSubmit. A prompt typed while Claude works goes in mid-turn, and the
+# transcript keeps it in a record that get_session_messages() skips. These fill the gap. Kept while the bridge runs.
+_pc_prompts = {}  # session id -> [(uuid of the message before it, text)]
+MAX_PC_PROMPTS = 100
 _headless = {}  # session id -> Popen of a `claude -p --resume` run for the phone
 
 
@@ -617,6 +638,20 @@ def messages(session_id, limit, offset):
             out.insert(at, bubble)
         elif after is None and offset == 0:
             out.insert(0, bubble)
+    # PC prompts that the transcript list does not show: the ones typed while Claude worked.
+    with _control:
+        pc_prompts = list(_pc_prompts.get(session_id, []))
+    for after, text in pc_prompts:
+        at = next((i + 1 for i, m in enumerate(out) if m.get("uuid") == after), None)
+        if at is None and not (after is None and offset == 0):
+            continue
+        at = at or 0
+        wanted = text.strip()
+        if any(m["type"] == "user" and any(b["type"] == "text" and b["text"].strip() == wanted for b in m["message"]["content"])
+               for m in out[max(0, at - 1):]):
+            continue  # A normal prompt: the transcript has it (it can be the "after" message itself).
+        out.insert(at, {"type": "user", "uuid": None, "session_id": session_id, "parent_tool_use_id": None,
+                        "message": {"role": "user", "content": [{"type": "text", "text": text}]}, "mid_turn": True})
     # If Stop reported a final reply that the transcript does not hold yet, add it at the end.
     final = PHONE_QUOTE.sub("", _last_reply.get(session_id) or "")
     if final and offset == 0:

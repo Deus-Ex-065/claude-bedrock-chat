@@ -215,7 +215,7 @@ private fun DrawerContent(
     ) {
         Column(Modifier.fillMaxHeight().statusBarsPadding().navigationBarsPadding()) {
             Text(
-                "Claude",
+                "Bedrock Chat", // The app's own name. The model is Claude; the app is not.
                 style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Medium, fontSize = 30.sp),
                 color = colors.text,
                 modifier = Modifier.padding(start = 24.dp, top = 18.dp, bottom = 18.dp),

@@ -226,8 +226,7 @@ private fun NotificationsRow(vm: PcViewModel) {
         if (ask) { vm.permissionsAsked(); toggle(true) }
     }
     // Show the real state: without the notification permission, nothing can show.
-    val on = setting && (android.os.Build.VERSION.SDK_INT < 33 ||
-        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
+    val on = setting && rememberNotificationPermission()
     Row(
         Modifier.fillMaxWidth().clickable { toggle(!on) }.padding(horizontal = 20.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -772,24 +771,32 @@ private fun Composer(hint: String, onSend: suspend (String) -> String?, confirmR
                 .clip(RoundedCornerShape(24.dp))
                 .background(colors.surface)
                 .padding(start = 16.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Bottom,
         ) {
-            Box(Modifier.weight(1f).padding(vertical = 10.dp)) {
-                if (text.isEmpty()) Text(hint, style = MaterialTheme.typography.bodyLarge, color = colors.textSecondary)
-                BasicTextField(
-                    value = text, onValueChange = { text = it; error = null },
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = colors.text),
-                    cursorBrush = SolidColor(colors.text), maxLines = 6,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            IconButton(
-                onClick = { if (confirmResume) confirming = true else send() },
-                enabled = text.isNotBlank() && !sending,
-                modifier = Modifier
-                    .size(40.dp)
+            // The hint is inside the field, so a tap anywhere on a wrapped hint (large text sizes) opens the keyboard.
+            BasicTextField(
+                value = text, onValueChange = { text = it; error = null },
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = colors.text),
+                cursorBrush = SolidColor(colors.text), maxLines = 6,
+                modifier = Modifier.weight(1f).padding(vertical = 12.dp),
+                decorationBox = { inner ->
+                    Box {
+                        if (text.isEmpty()) Text(hint, style = MaterialTheme.typography.bodyLarge, color = colors.textSecondary)
+                        inner()
+                    }
+                },
+            )
+            Spacer(Modifier.width(8.dp))
+            // A plain round box, not an IconButton: an IconButton grows to 48 dp outside its size and covers the text.
+            val canSend = text.isNotBlank() && !sending
+            Box(
+                Modifier
+                    .padding(vertical = 2.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
-                    .background(if (text.isNotBlank()) colors.accent else colors.chip),
+                    .background(if (text.isNotBlank()) colors.accent else colors.chip)
+                    .clickable(enabled = canSend) { if (confirmResume) confirming = true else send() },
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(Icons.Outlined.ArrowUpward, "Send", tint = if (text.isNotBlank()) Color.White else colors.textSecondary)
             }

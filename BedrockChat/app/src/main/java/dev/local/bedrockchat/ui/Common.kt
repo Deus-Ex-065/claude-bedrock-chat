@@ -31,6 +31,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -176,4 +179,23 @@ fun rememberChatNotificationToggle(set: (Boolean) -> Unit): (Boolean) -> Unit {
             android.content.pm.PackageManager.PERMISSION_GRANTED
         if (needsPermission) ask.launch(android.Manifest.permission.POST_NOTIFICATIONS) else set(want)
     }
+}
+
+/**
+ * Whether the app may post notifications. It is checked again each time the app comes back to the front,
+ * for example after Android's permission dialog or the app settings. A check made only once
+ * would keep showing the old answer.
+ */
+@Composable
+fun rememberNotificationPermission(): Boolean {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    fun check() = android.os.Build.VERSION.SDK_INT < 33 ||
+        androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) ==
+        android.content.pm.PackageManager.PERMISSION_GRANTED
+    var granted by remember { mutableStateOf(check()) }
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        granted = check()
+        onPauseOrDispose {}
+    }
+    return granted
 }
