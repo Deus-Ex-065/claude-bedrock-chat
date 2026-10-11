@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.Clipboard
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.foundation.text.contextmenu.builder.item
+import androidx.compose.foundation.text.contextmenu.data.ProcessTextKey
 import androidx.compose.foundation.text.contextmenu.data.TextContextMenuItem
 import androidx.compose.foundation.text.contextmenu.data.TextContextMenuKeys
 import androidx.compose.foundation.text.contextmenu.modifier.appendTextContextMenuComponents
@@ -141,7 +142,7 @@ fun speakableText(markdown: String): String = markdown
     .trim()
 
 /**
- * Makes [content] selectable, with "Quote" in the selection menu. Compose gives menu items no access to the
+ * Makes [content] selectable, with Copy, Select all, and Quote in the selection menu. Compose gives menu items no access to the
  * selection, so Quote runs the built-in Copy action into a stand-in clipboard: the text goes to [onQuote], and the
  * system clipboard is not touched (no "pasted from your clipboard" notice). Copy itself still uses the real clipboard.
  */
@@ -157,7 +158,9 @@ fun QuoteSelection(onQuote: (String) -> Unit, content: @Composable () -> Unit) {
             Modifier
                 .filterTextContextMenuComponents { component ->
                     if (component.key == TextContextMenuKeys.CopyKey && component is TextContextMenuItem) copyItem[0] = component
-                    true
+                    // Leave out the system text actions (Ask Gemini, Read aloud, and others). Compose adds them before
+                    // app items, so with them Quote is hidden under the overflow. The reply has its own Read aloud.
+                    component.key !is ProcessTextKey
                 }
                 .appendTextContextMenuComponents {
                     item(key = QuoteKey, label = "Quote") {
