@@ -73,6 +73,8 @@ fun MainScreen(vm: ChatViewModel) {
     val chatNotifications by vm.chatNotifications.collectAsStateWithLifecycle()
     val haptics by vm.haptics.collectAsStateWithLifecycle()
     val readLinks by vm.readLinks.collectAsStateWithLifecycle()
+    val memoryOn by vm.memoryOn.collectAsStateWithLifecycle()
+    val memoryItems by vm.memoryItems.collectAsStateWithLifecycle()
     val credentials by vm.credentials.collectAsStateWithLifecycle()
     val colorMode by vm.colorMode.collectAsStateWithLifecycle()
     val notice by vm.notices.collectAsStateWithLifecycle()
@@ -178,6 +180,11 @@ fun MainScreen(vm: ChatViewModel) {
                     chatNotifications = chatNotifications,
                     readLinks = readLinks,
                     onReadLinks = vm::setReadLinks,
+                    memoryOn = memoryOn,
+                    onMemory = vm::setMemory,
+                    memoryItems = memoryItems,
+                    onDeleteMemoryItem = vm::deleteMemoryItem,
+                    onClearMemory = vm::clearMemory,
                     onChatNotifications = vm::setChatNotifications,
                     modelId = state.modelId,
                     effort = state.effort,

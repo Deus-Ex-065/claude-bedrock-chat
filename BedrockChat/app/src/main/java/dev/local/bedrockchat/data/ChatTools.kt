@@ -31,26 +31,46 @@ class ToolOutput(val blocks: List<ToolResultBlockParam.Content.Block>, val isErr
  * The client tools that the app runs on the phone. Bedrock has no server tools (web search, web fetch),
  * so the phone does the work itself and sends the result back to Claude.
  */
-class ChatTools(private val readLinks: Boolean) {
+class ChatTools(private val readLinks: Boolean, private val memory: MemoryStore? = null) {
 
     val definitions: List<Tool>
-        get() = buildList { if (readLinks) add(READ_LINK) }
+        get() = buildList {
+            if (readLinks) add(READ_LINK)
+            if (memory != null) add(UPDATE_MEMORY)
+        }
 
     val isEmpty get() = definitions.isEmpty()
 
     /** A short description for the system prompt, so Claude knows what it can and cannot do. */
     val promptNote: String
-        get() = if (readLinks) {
+        get() = (if (readLinks) {
             "You can read web pages and PDFs with the read_link tool, for example when the user shares a link. " +
                 "You cannot search the web, so use links that the user gave or that you are sure exist. "
         } else {
             "You cannot open links or search the web. If the user shares a link, say that link reading is off in Settings. "
-        }
+        }) + memoryNote()
+
+    /** The memory goes into the system prompt, so Claude has it without a tool call. */
+    private fun memoryNote(): String {
+        val items = memory?.items?.value ?: return ""
+        val saved = if (items.isEmpty()) "Your memory is empty."
+        else "What you remember from earlier chats:\n<memory>\n" + items.joinToString("\n") { "- $it" } + "\n</memory>"
+        return "\n\nYou have a memory that carries across chats with this user. It is stored on their phone, and they can see " +
+            "and delete it in Settings. $saved\nUse it when it is relevant; do not mention it otherwise. Call update_memory when the " +
+            "user asks you to remember or forget something, or when you learn something that is clearly useful in later chats " +
+            "(lasting preferences, facts about the user, ongoing projects). Do not save passing details, secrets, or sensitive " +
+            "personal data unless the user asks. Keep items short, and update an item instead of adding a near copy.\n\n"
+    }
 
     fun label(name: String, inputJson: String): ToolLabel = when (name) {
         READ_LINK_NAME -> {
             val site = runCatching { URI(JSONObject(inputJson).optString("url")).host?.removePrefix("www.") }.getOrNull() ?: "the link"
             ToolLabel("Reading $site…", "Read $site", "Couldn't read $site")
+        }
+        UPDATE_MEMORY_NAME -> when (runCatching { JSONObject(inputJson).optString("action") }.getOrNull()) {
+            "remove" -> ToolLabel("Removing from memory…", "Removed from memory", "Couldn't change memory")
+            "replace" -> ToolLabel("Updating memory…", "Updated memory", "Couldn't change memory")
+            else -> ToolLabel("Saving to memory…", "Saved to memory", "Couldn't save to memory")
         }
         else -> ToolLabel("Using $name…", "Used $name", "$name failed")
     }
@@ -59,10 +79,24 @@ class ChatTools(private val readLinks: Boolean) {
     fun run(name: String, inputJson: String): ToolOutput = try {
         when (name) {
             READ_LINK_NAME -> if (readLinks) readLink(JSONObject(inputJson).optString("url")) else error("Link reading is off.")
+            UPDATE_MEMORY_NAME -> updateMemory(JSONObject(inputJson))
             else -> error("Unknown tool: $name")
         }
     } catch (e: Exception) {
         ToolOutput(listOf(ToolResultBlockParam.Content.Block.ofText(e.message ?: e.javaClass.simpleName)), isError = true)
+    }
+
+    private fun updateMemory(input: JSONObject): ToolOutput {
+        val store = memory ?: error("Memory is off for this chat.")
+        val text = input.optString("text")
+        val problem = when (input.optString("action")) {
+            "add" -> store.add(text)
+            "replace" -> store.replace(input.optString("old_text"), text)
+            "remove" -> store.remove(input.optString("old_text").ifBlank { text })
+            else -> "Unknown action. Use add, replace, or remove."
+        }
+        if (problem != null) error(problem)
+        return ToolOutput(listOf(ToolResultBlockParam.Content.Block.ofText("Done. Memory now has ${store.items.value.size} items.")), isError = false)
     }
 
     private fun readLink(address: String): ToolOutput {
@@ -203,6 +237,38 @@ class ChatTools(private val readLinks: Boolean) {
             "p", "div", "section", "article", "main", "header", "h1", "h2", "h3", "h4", "h5", "h6", "li", "ul", "ol",
             "pre", "blockquote", "table", "tr", "dl", "dt", "dd", "figure", "figcaption", "hr",
         )
+
+        const val UPDATE_MEMORY_NAME = "update_memory"
+
+        /** Every tool the app has. Old tool turns in a chat need their definitions, even when a tool is off now. */
+        val ALL: List<Tool> get() = listOf(READ_LINK, UPDATE_MEMORY)
+
+        private fun prop(type: String, description: String, enum: List<String>? = null): JsonValue =
+            JsonValue.from(buildMap {
+                put("type", type)
+                put("description", description)
+                enum?.let { put("enum", it) }
+            })
+
+        private val UPDATE_MEMORY: Tool = Tool.builder()
+            .name(UPDATE_MEMORY_NAME)
+            .description(
+                "Change what you remember about the user across chats. The current memory is in the system prompt. " +
+                    "add saves a new item; replace changes the item that contains old_text; remove deletes the item that contains old_text."
+            )
+            .inputSchema(
+                Tool.InputSchema.builder()
+                    .properties(
+                        Tool.InputSchema.Properties.builder()
+                            .putAdditionalProperty("action", prop("string", "What to do.", listOf("add", "replace", "remove")))
+                            .putAdditionalProperty("text", prop("string", "For add and replace: the item, one short sentence."))
+                            .putAdditionalProperty("old_text", prop("string", "For replace and remove: text of the existing item."))
+                            .build()
+                    )
+                    .required(listOf("action"))
+                    .build()
+            )
+            .build()
 
         private val READ_LINK: Tool = Tool.builder()
             .name(READ_LINK_NAME)

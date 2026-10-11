@@ -52,6 +52,7 @@ data class ChatUiState(
 class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val settings = (app as App).settings
     private val store = (app as App).store
+    private val memory = (app as App).memory
 
     private val _credentials = MutableStateFlow(settings.credentials())
     val credentials: StateFlow<Credentials?> = _credentials.asStateFlow()
@@ -200,6 +201,14 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     /** "Read links": Claude can open web pages and PDFs, downloaded by the phone. */
     val readLinks: StateFlow<Boolean> = _readLinks.asStateFlow()
     fun setReadLinks(on: Boolean) { settings.readLinks = on; _readLinks.value = on }
+
+    private val _memoryOn = MutableStateFlow(settings.memory)
+    /** "Memory": Claude remembers things across chats. Incognito chats do not read or change it. */
+    val memoryOn: StateFlow<Boolean> = _memoryOn.asStateFlow()
+    val memoryItems: StateFlow<List<String>> = memory.items
+    fun setMemory(on: Boolean) { settings.memory = on; _memoryOn.value = on }
+    fun deleteMemoryItem(index: Int) = memory.removeAt(index)
+    fun clearMemory() = memory.clear()
 
     private val _offerChatNotifications = MutableStateFlow(!settings.askedChatNotifications && !settings.chatNotifications)
     /** True until the "Get notified when Claude responds" card is answered or closed. */
@@ -404,7 +413,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             try {
-                service.stream(s.modelId, s.effort, history, settings.displayName, ChatTools(settings.readLinks)).collect { event ->
+                service.stream(s.modelId, s.effort, history, settings.displayName, ChatTools(settings.readLinks, memory.takeIf { settings.memory && !s.incognito })).collect { event ->
                     when (event) {
                         is StreamEvent.ThinkingDelta -> {
                             if (thinkingStart == 0L) thinkingStart = System.currentTimeMillis()

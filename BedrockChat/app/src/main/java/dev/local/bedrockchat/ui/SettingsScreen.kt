@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.AltRoute
 import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material3.CircularProgressIndicator
@@ -87,6 +89,11 @@ fun SettingsScreen(
     onChatNotifications: (Boolean) -> Unit,
     readLinks: Boolean,
     onReadLinks: (Boolean) -> Unit,
+    memoryOn: Boolean,
+    onMemory: (Boolean) -> Unit,
+    memoryItems: List<String>,
+    onDeleteMemoryItem: (Int) -> Unit,
+    onClearMemory: () -> Unit,
     modelId: String,
     effort: Effort,
     onSelectModel: (String) -> Unit,
@@ -113,6 +120,7 @@ fun SettingsScreen(
     var regionBusy by remember { mutableStateOf<String?>(null) }
     var regionError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    var showMemory by remember { mutableStateOf(false) }
     val notifyToggle = rememberChatNotificationToggle(onChatNotifications)
     // Show the real state: without the permission, nothing can show.
     val notifyOn = chatNotifications && rememberNotificationPermission()
@@ -205,6 +213,20 @@ fun SettingsScreen(
                         colors = SwitchDefaults.colors(checkedTrackColor = Color(0xFF2E7BE6), checkedThumbColor = Color.White),
                     )
                 }
+                GroupDivider()
+                SettingRow(Icons.Outlined.Psychology, "Memory", "Claude remembers things about you across chats. Stored on this phone.") {
+                    Switch(
+                        checked = memoryOn,
+                        onCheckedChange = onMemory,
+                        colors = SwitchDefaults.colors(checkedTrackColor = Color(0xFF2E7BE6), checkedThumbColor = Color.White),
+                    )
+                }
+                GroupDivider()
+                SettingRow(
+                    null, "What Claude remembers",
+                    when (memoryItems.size) { 0 -> "Nothing yet"; 1 -> "1 item"; else -> "${memoryItems.size} items" },
+                    onClick = { showMemory = true },
+                ) { Chevron() }
             }
             Spacer(Modifier.height(16.dp))
             CardGroup {
@@ -220,6 +242,55 @@ fun SettingsScreen(
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
             Spacer(Modifier.height(32.dp))
+        }
+    }
+
+    if (showMemory) {
+        var confirmClear by remember { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = { showMemory = false },
+            containerColor = colors.surface,
+            title = { Text("What Claude remembers", color = colors.text) },
+            text = {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                    if (memoryItems.isEmpty()) {
+                        Text(
+                            "Nothing yet. Ask Claude to remember something, or it saves lasting details as you chat. " +
+                                "Incognito chats do not use memory.",
+                            color = colors.textSecondary,
+                        )
+                    }
+                    memoryItems.forEachIndexed { i, item ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(item, color = colors.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { onDeleteMemoryItem(i) }) {
+                                Icon(Icons.Outlined.Close, "Forget this", tint = colors.textSecondary)
+                            }
+                        }
+                        if (i < memoryItems.lastIndex) GroupDivider()
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showMemory = false }) { Text("Done", color = colors.accent) } },
+            dismissButton = {
+                if (memoryItems.isNotEmpty()) {
+                    TextButton(onClick = { confirmClear = true }) { Text("Forget all", color = MaterialTheme.colorScheme.error) }
+                }
+            },
+        )
+        if (confirmClear) {
+            AlertDialog(
+                onDismissRequest = { confirmClear = false },
+                containerColor = colors.surface,
+                title = { Text("Forget everything?", color = colors.text) },
+                text = { Text("Claude forgets all ${memoryItems.size} items. Your chats stay.", color = colors.textSecondary) },
+                confirmButton = {
+                    TextButton(onClick = { onClearMemory(); confirmClear = false }) {
+                        Text("Forget all", color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel", color = colors.text) } },
+            )
         }
     }
 

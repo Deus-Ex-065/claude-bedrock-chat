@@ -102,6 +102,7 @@ import dev.local.bedrockchat.data.Role
 import dev.local.bedrockchat.data.ToolCall
 import dev.local.bedrockchat.data.ToolStatus
 import androidx.compose.material.icons.outlined.Language
+import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material3.CircularProgressIndicator
 import kotlinx.coroutines.launch
 import java.io.File
@@ -531,7 +532,10 @@ private fun ToolCallRow(call: ToolCall) {
             Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
                 when (call.status) {
                     ToolStatus.RUNNING -> CircularProgressIndicator(Modifier.size(14.dp), color = colors.textSecondary, strokeWidth = 1.5.dp)
-                    ToolStatus.DONE -> Icon(Icons.Outlined.Language, null, tint = colors.textSecondary, modifier = Modifier.size(18.dp))
+                    ToolStatus.DONE -> Icon(
+                        if (call.name == "update_memory") Icons.Outlined.Psychology else Icons.Outlined.Language, null,
+                        tint = colors.textSecondary, modifier = Modifier.size(18.dp),
+                    )
                     ToolStatus.FAILED -> Icon(Icons.Outlined.ErrorOutline, null, tint = colors.textSecondary, modifier = Modifier.size(18.dp))
                 }
             }

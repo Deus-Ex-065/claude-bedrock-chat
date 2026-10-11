@@ -123,6 +123,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean(KEY_READ_LINKS, true)
         set(value) = prefs.edit().putBoolean(KEY_READ_LINKS, value).apply()
 
+    /** Let Claude remember things across chats. The memory stays on the phone. */
+    var memory: Boolean
+        get() = prefs.getBoolean(KEY_MEMORY, true)
+        set(value) = prefs.edit().putBoolean(KEY_MEMORY, value).apply()
+
     /** True after the "Get notified when Claude responds" card was answered or closed. */
     var askedChatNotifications: Boolean
         get() = prefs.getBoolean(KEY_ASKED_CHAT_NOTIFICATIONS, false)
@@ -173,6 +178,7 @@ class Settings(context: Context) {
         const val KEY_PC_NOTIFICATIONS = "pc_notifications"
         const val KEY_CHAT_NOTIFICATIONS = "chat_notifications"
         const val KEY_READ_LINKS = "read_links"
+        const val KEY_MEMORY = "memory"
         const val KEY_ASKED_CHAT_NOTIFICATIONS = "asked_chat_notifications"
         const val KEY_BRIDGE_URL = "bridge_url"
         const val KEY_BRIDGE_TOKEN = "bridge_token"

@@ -87,10 +87,8 @@ class ClaudeService(private val credentials: Credentials) {
         tools: ChatTools = ChatTools(readLinks = false),
     ): Flow<StreamEvent> = callbackFlow {
         val messages = history.flatMap(::toParams).toMutableList()
-        // Old tool turns need the tool definitions, even when the tool is off now.
-        val definitions = tools.definitions.ifEmpty {
-            if (history.any { it.apiTurns.isNotEmpty() && !it.stopped }) ChatTools(readLinks = true).definitions else emptyList()
-        }
+        // Old tool turns need every tool definition, even for a tool that is off now. A call to it returns an error.
+        val definitions = if (history.any { it.apiTurns.isNotEmpty() && !it.stopped }) ChatTools.ALL else tools.definitions
         val turns = mutableListOf<ApiTurn>()
         val cancelled = AtomicBoolean(false)
         val current = AtomicReference<AutoCloseable?>(null)

@@ -18,6 +18,7 @@ Two parts that work together:
 - Edit and resend messages, retry replies, star, rename, and delete chats, and use incognito chats.
 - Share a reply, have it read aloud, or select part of it and tap **Quote** to reply to that part.
 - Share a link and Claude reads it: web pages and PDFs, downloaded by your phone (Bedrock has no web tools). Local network addresses are refused. Turn it off under **Settings → Capabilities**.
+- Memory across chats: Claude saves short items it should remember (or that you ask it to) and uses them in new chats. It stays on the phone, costs no extra requests, and you can see and delete each item under **Settings → Capabilities**. Incognito chats do not use it.
 - Optional "Notify when Claude responds": a reply continues when you leave the app, and the phone notifies you when it is ready.
 - The API key is checked with one short request, then stored encrypted on the phone only.
 
