@@ -7,7 +7,6 @@ import dev.local.bedrockchat.data.BridgeClient
 import dev.local.bedrockchat.data.BridgeException
 import dev.local.bedrockchat.data.BridgeLink
 import dev.local.bedrockchat.data.PcControl
-import dev.local.bedrockchat.data.PcFolders
 import dev.local.bedrockchat.data.PcMessage
 import dev.local.bedrockchat.data.PcSession
 import kotlinx.coroutines.Job
@@ -103,21 +102,6 @@ class PcViewModel(app: Application) : AndroidViewModel(app) {
         refreshControl()
         // Opened from a notification, the list may not be loaded yet. The header needs it for the title and status.
         if (_state.value.sessions.none { it.id == sessionId }) refreshSessions()
-    }
-
-    /** Folders and groups for a new session, or null when the bridge is too old or not reachable. */
-    suspend fun folders(): PcFolders? = runCatching { client?.folders() }.getOrNull()
-
-    /** Starts a new session on the PC. Returns its id, or throws with a message to show. */
-    suspend fun newSession(cwd: String, text: String, group: String?): String {
-        val c = client ?: throw BridgeException("Not paired.")
-        val id = try {
-            c.newSession(cwd, text, group)
-        } catch (e: Exception) {
-            throw if (e.message.orEmpty().contains("not found")) BridgeException(UPDATE_BRIDGE_NEW) else e
-        }
-        refreshSessions()
-        return id
     }
 
     fun close() = _state.update { it.copy(openId = null, messages = emptyList(), control = PcControl()) }
@@ -281,7 +265,6 @@ class PcViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object {
         const val UPDATE_BRIDGE = "Stop needs the new bridge. Update bridge.py on the PC and run install_hooks.py --apply."
-        const val UPDATE_BRIDGE_NEW = "New sessions need the new bridge. Update bridge.py on the PC and restart it."
         val REFRESH_EVENTS = setOf("UserPromptSubmit", "PostToolUse", "Stop", "SessionStart", "ControlChanged")
     }
 }

@@ -17,7 +17,6 @@ Control from the phone also uses documented hooks only:
 - Stop with asyncRewake: after each turn a hook waits here for a phone message. When one comes,
   the hook exits 2 and Claude Code wakes the session with it. A prompt typed on the PC releases it.
 - Sessions that are not open run the phone message with `claude -p --resume`.
-- New sessions from the phone start with `claude -p --session-id`. The phone message is a normal prompt.
 
 Run:  python -I bridge.py [--port 8765] [--lan]
 Then open http://localhost:8765 on this PC.
@@ -34,7 +33,6 @@ import subprocess
 import sys
 import threading
 import time
-import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -306,7 +304,6 @@ _phone_prompts = {}  # session id -> [(uuid of the message before it, text)] del
 _pc_prompts = {}  # session id -> [(uuid of the message before it, text)]
 MAX_PC_PROMPTS = 100
 _headless = {}  # session id -> Popen of a `claude -p --resume` run for the phone
-_phone_groups = {}  # session id -> group name, for sessions started from the phone in a group
 _inflight = {}  # session id -> the phone message just delivered, until Claude shows that it got it
 _listening = set()  # Sessions whose waiter hook is connected now, so a phone message goes in at once
 
@@ -344,36 +341,6 @@ def run_claude(sid, args, cwd):
     threading.Thread(target=_after_headless, args=(sid, proc), daemon=True).start()
 
 
-def folders():
-    """Project folders of recent sessions, newest first, with the groups their sessions are in."""
-    groups = desktop_groups()
-    seen = {}
-    for info in list_sessions(limit=200):
-        if not info.cwd or not os.path.isdir(info.cwd):
-            continue
-        f = seen.setdefault(info.cwd, {"path": info.cwd, "groups": [], "last_modified": info.last_modified or 0})
-        name = groups.get(info.session_id, (_phone_groups.get(info.session_id), None))[0]
-        if name and name not in f["groups"]:
-            f["groups"].append(name)
-    ordered = sorted({n: o for n, o in groups.values()}.items(), key=lambda g: g[1])
-    names = [n for n, _ in ordered] + sorted(set(_phone_groups.values()) - {n for n, _ in ordered})
-    return {"folders": sorted(seen.values(), key=lambda f: -f["last_modified"]), "groups": names}
-
-
-def new_session(cwd, text, group):
-    """Starts a new Claude Code session in [cwd] with the phone message as its first prompt."""
-    if not cwd or not os.path.isdir(cwd):
-        raise ValueError("This folder does not exist on the PC.")
-    sid = str(uuid.uuid4())
-    if group:
-        with _control:
-            _phone_groups[sid] = group
-            save_prompts()
-    run_claude(sid, ["--session-id", sid, text], cwd)
-    print(f"Phone started session {sid[:8]} in {cwd}", flush=True)
-    return sid
-
-
 def control_changed(sid):
     push_event({"event": "ControlChanged", "session_id": sid})
 
@@ -407,7 +374,6 @@ def load_prompts():
     for key, target in (("phone", _phone_prompts), ("pc", _pc_prompts)):
         for sid, items in (data.get(key) or {}).items():
             target[sid] = [(after, text) for after, text in items]
-    _phone_groups.update({k: v for k, v in (data.get("groups") or {}).items() if isinstance(v, str)})
     for sid, items in (data.get("queued") or {}).items():
         if items:
             _queued[sid] = [q for q in items if isinstance(q, dict) and q.get("text")]
@@ -415,8 +381,7 @@ def load_prompts():
 
 def save_prompts():
     """Call with _control held."""
-    data = {"phone": _phone_prompts, "pc": _pc_prompts, "queued": {k: v for k, v in _queued.items() if v},
-            "groups": _phone_groups}
+    data = {"phone": _phone_prompts, "pc": _pc_prompts, "queued": {k: v for k, v in _queued.items() if v}}
     try:
         PROMPTS_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     except OSError as e:
@@ -777,11 +742,8 @@ def sessions(limit):
         if sid not in known and (info := get_session_info(sid)):
             entries.append(session_entry(info, live))
     groups = desktop_groups()
-    order_of = {name: order for name, order in groups.values()}
     for e in entries:
         name, order = groups.get(e["session_id"], (None, None))
-        if name is None and (name := _phone_groups.get(e["session_id"])):
-            order = order_of.get(name, len(order_of))  # A group only the phone knows comes after the PC's groups.
         e["group"], e["group_order"] = name, order
     entries.sort(key=lambda e: (not e["live"], -(e["last_modified"] or 0)))
     return entries
@@ -998,8 +960,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"name": socket.gethostname(), "bridge": 1})
             if url.path == "/api/sessions":
                 return self._send(200, sessions(int(q.get("limit", 30))))
-            if url.path == "/api/folders":
-                return self._send(200, folders())
             if url.path == "/api/stream":
                 return self.stream(resume_point(self.headers.get("Last-Event-ID") or q.get("since")))
             m = re.fullmatch(r"/api/sessions/([0-9a-f-]{36})/control", url.path)
@@ -1065,15 +1025,6 @@ class Handler(BaseHTTPRequestHandler):
                     if not text:
                         return self._send(400, {"error": "The message is empty."})
                     return self._send(200, {"result": send_prompt(m.group(1), text)})
-                if url.path == "/api/sessions/new":
-                    text = str(data.get("text", "")).strip()
-                    if not text:
-                        return self._send(400, {"error": "The message is empty."})
-                    try:
-                        sid = new_session(str(data.get("cwd", "")), text, str(data.get("group") or "").strip() or None)
-                    except ValueError as e:
-                        return self._send(400, {"error": str(e)})
-                    return self._send(200, {"session_id": sid})
                 m = re.fullmatch(r"/api/permissions/([0-9a-f]{16})", url.path)
                 if m:
                     ok = decide(m.group(1), data.get("behavior"), bool(data.get("always")), str(data.get("message", "")))

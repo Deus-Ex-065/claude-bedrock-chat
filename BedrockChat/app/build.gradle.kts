@@ -13,8 +13,8 @@ android {
         applicationId = "dev.local.bedrockchat"
         minSdk = 26
         targetSdk = 37
-        versionCode = 32
-        versionName = "0.13.1"
+        versionCode = 33
+        versionName = "0.14.0"
     }
 
     buildTypes {

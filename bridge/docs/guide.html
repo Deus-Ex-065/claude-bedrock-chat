@@ -127,22 +127,13 @@ switch stays as you set it. A phone message that waits for an open session also 
 <p>The list shows the sessions on the computer. A teal dot means the session is working or needs you.
 A green dot means it is open and waiting. Tap a session to follow it live. Tap a tool row or
 <b>Result</b> to see more.</p>
-<h3>Start a new session</h3>
-<p>Tap <b>New session</b> at the bottom of the list, or <b>+</b> next to a group name. Type the first message, pick a
-group and a folder, and tap <b>Start</b>. The folders come from your recent sessions. The bridge starts Claude Code in that
-folder with <code>claude -p</code>, and approvals come to the phone.</p>
-<ul>
-  <li>Claude gets the first message as a normal prompt from you, so it acts on it the same way as on the computer.</li>
-  <li>The group shows on the phone only. The desktop app does not let other programs change its sidebar, so on the
-    computer you drag the session into the group yourself.</li>
-  <li>If you start the bridge from inside the Claude desktop app, the bridge removes the desktop app's own variables
-    before it starts <code>claude</code>, so <code>claude</code> uses your settings in <code>~/.claude/settings.json</code>.</li>
-</ul>
 <h3>Why a message to an open session is weaker</h3>
 <p>A message to a session that is open on the computer reaches Claude through a hook. Claude Code marks all hook text as
 "not user input", because any program could write it. So Claude takes such a message as a request, but it can ask you to
-confirm risky steps on the computer or through an approval on the phone. A new session, or a message to a closed session,
-is a normal prompt and does not have this limit.</p>
+confirm risky steps on the computer or through an approval on the phone. A message to a closed session is a normal
+prompt and does not have this limit. If you start the bridge from inside the Claude desktop app, the bridge removes the
+desktop app's own variables before it runs <code>claude -p</code>, so <code>claude</code> uses your
+<code>~/.claude/settings.json</code>.</p>
 
 <h3>Send a message</h3>
 <p>Type in the box at the bottom of a session and tap the arrow.</p>
