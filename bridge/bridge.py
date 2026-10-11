@@ -437,8 +437,10 @@ def wait_for_prompt(data):
     return WAKE, PHONE_NOTE + text
 
 
-STOP_NOTE = ("The user stopped this turn from their phone. Do not call more tools. "
-             "End your turn now with one short line: Stopped from the phone.")
+# Claude Code shows this as "PreToolUse:<tool> hook error: ..." on the PC, so it starts with the part for the person.
+STOP_NOTE = ("Stopped from the phone. (For Claude: the user stopped this turn. Do not call more tools. "
+             "End your turn now with one short line: Stopped from the phone.)")
+OLD_STOP_NOTE = "The user stopped this turn from their phone."  # Wording before 0.8.2, still in old transcripts
 
 
 def unqueue(sid, qid):
@@ -620,6 +622,9 @@ def clean_tool_result(block):
                 parts.append("[image]")
         content = "\n".join(parts)
     text = content if isinstance(content, str) else json.dumps(content)
+    if STOP_NOTE in text or OLD_STOP_NOTE in text:  # A tool call that Stop refused. Not an error for the person who stopped it.
+        return {"type": "tool_result", "tool_use_id": block.get("tool_use_id"), "is_error": False,
+                "content": "Stopped from your phone", "truncated": False}
     truncated = len(text) > MAX_TOOL_RESULT_CHARS
     return {
         "type": "tool_result",
