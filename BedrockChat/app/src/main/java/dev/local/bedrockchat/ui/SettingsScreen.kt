@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.AltRoute
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material3.CircularProgressIndicator
@@ -84,6 +85,8 @@ fun SettingsScreen(
     haptics: Boolean,
     chatNotifications: Boolean,
     onChatNotifications: (Boolean) -> Unit,
+    readLinks: Boolean,
+    onReadLinks: (Boolean) -> Unit,
     modelId: String,
     effort: Effort,
     onSelectModel: (String) -> Unit,
@@ -191,6 +194,18 @@ fun SettingsScreen(
                 }
             }
 
+            Spacer(Modifier.height(16.dp))
+            Text("Capabilities", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary,
+                modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
+            CardGroup {
+                SettingRow(Icons.Outlined.Link, "Read links", "Claude can open web pages and PDFs. Your phone downloads them.") {
+                    Switch(
+                        checked = readLinks,
+                        onCheckedChange = onReadLinks,
+                        colors = SwitchDefaults.colors(checkedTrackColor = Color(0xFF2E7BE6), checkedThumbColor = Color.White),
+                    )
+                }
+            }
             Spacer(Modifier.height(16.dp))
             CardGroup {
                 SettingRow(Icons.Outlined.DeleteSweep, "Delete all chats", onClick = { confirmDeleteAll = true })

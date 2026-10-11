@@ -41,11 +41,28 @@ data class ChatMessage(
      * List<ContentBlockParam>). Sent back unchanged so thinking blocks stay valid.
      */
     val apiContent: String? = null,
+    /**
+     * For a reply that used tools: the turns before [apiContent], in order (assistant with tool_use, then user
+     * with tool_result, and so on). Sent back unchanged with the reply.
+     */
+    val apiTurns: List<ApiTurn> = emptyList(),
+    /** The tool calls in this reply, for the rows above the text. */
+    val toolCalls: List<ToolCall> = emptyList(),
     val modelId: String? = null,
     val error: String? = null,
     val stopped: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
 )
+
+/** One API turn inside a reply. [content] is JSON of List<ContentBlockParam>. */
+@Serializable
+data class ApiTurn(val role: Role, val content: String)
+
+@Serializable
+enum class ToolStatus { RUNNING, DONE, FAILED }
+
+@Serializable
+data class ToolCall(val id: String, val name: String, val label: String, val status: ToolStatus, val detail: String? = null)
 
 @Serializable
 data class Conversation(

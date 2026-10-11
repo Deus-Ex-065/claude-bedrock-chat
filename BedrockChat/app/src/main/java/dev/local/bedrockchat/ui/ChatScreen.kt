@@ -99,6 +99,10 @@ import dev.local.bedrockchat.ChatUiState
 import dev.local.bedrockchat.data.ChatMessage
 import dev.local.bedrockchat.data.Effort
 import dev.local.bedrockchat.data.Role
+import dev.local.bedrockchat.data.ToolCall
+import dev.local.bedrockchat.data.ToolStatus
+import androidx.compose.material.icons.outlined.Language
+import androidx.compose.material3.CircularProgressIndicator
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.LocalTime
@@ -518,6 +522,30 @@ private fun UserMessage(message: ChatMessage, onCopy: () -> Unit, onSelect: () -
     }
 }
 
+/** One tool call in a reply, for example "Read example.com". A failed call shows why below it. */
+@Composable
+private fun ToolCallRow(call: ToolCall) {
+    val colors = AppTheme.colors
+    Column(Modifier.padding(vertical = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
+                when (call.status) {
+                    ToolStatus.RUNNING -> CircularProgressIndicator(Modifier.size(14.dp), color = colors.textSecondary, strokeWidth = 1.5.dp)
+                    ToolStatus.DONE -> Icon(Icons.Outlined.Language, null, tint = colors.textSecondary, modifier = Modifier.size(18.dp))
+                    ToolStatus.FAILED -> Icon(Icons.Outlined.ErrorOutline, null, tint = colors.textSecondary, modifier = Modifier.size(18.dp))
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(call.label, style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        }
+        call.detail?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = colors.textSecondary, maxLines = 3,
+                modifier = Modifier.padding(start = 28.dp, top = 2.dp))
+        }
+    }
+}
+
 @Composable
 private fun AssistantMessage(
     message: ChatMessage,
@@ -563,6 +591,9 @@ private fun AssistantMessage(
                 }
             }
         }
+
+        message.toolCalls.forEach { call -> ToolCallRow(call) }
+        if (message.toolCalls.isNotEmpty()) Spacer(Modifier.height(6.dp))
 
         if (message.text.isNotEmpty()) {
             // Long-press to select. The selection menu has Copy and Quote; Quote puts the text above the message box.

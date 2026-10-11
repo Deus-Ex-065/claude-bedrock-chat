@@ -26,6 +26,8 @@ import com.anthropic.models.messages.PlainTextSource
 import com.anthropic.models.messages.StopReason
 import com.anthropic.models.messages.TextBlockParam
 import com.anthropic.models.messages.ThinkingConfigAdaptive
+import com.anthropic.models.messages.ToolChoiceNone
+import com.anthropic.models.messages.ToolResultBlockParam
 import com.fasterxml.jackson.core.type.TypeReference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -35,6 +37,8 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.Duration
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import kotlin.concurrent.thread
@@ -45,7 +49,9 @@ class NoGeoProfileException(val region: String) : IllegalArgumentException("No g
 sealed interface StreamEvent {
     data class ThinkingDelta(val text: String) : StreamEvent
     data class TextDelta(val text: String) : StreamEvent
-    data class Done(val message: Message) : StreamEvent
+    data class ToolStarted(val id: String, val name: String, val label: String) : StreamEvent
+    data class ToolFinished(val id: String, val label: String, val failed: Boolean, val detail: String?) : StreamEvent
+    data class Done(val message: Message, val turns: List<ApiTurn>) : StreamEvent
 }
 
 /**
@@ -69,37 +75,111 @@ class ClaudeService(private val credentials: Credentials) {
         Routing.IN_REGION -> modelId
     }
 
-    fun stream(modelId: String, effort: Effort, history: List<ChatMessage>, userName: String = ""): Flow<StreamEvent> = callbackFlow {
-        val params = MessageCreateParams.builder()
-            .model(wire(modelId))
-            .maxTokens(64_000L)
-            .system(systemPrompt(modelId, userName))
-            .messages(history.map(::toParam))
-            .thinking(ThinkingConfigAdaptive.builder().display(ThinkingConfigAdaptive.Display.SUMMARIZED).build())
-            .outputConfig(OutputConfig.builder().effort(OutputConfig.Effort.of(effort.apiValue)).build())
-            .cacheControl(CacheControlEphemeral.builder().build())
-            .build()
+    /**
+     * Streams one reply. When Claude asks for a tool, the tool runs on the phone and the result goes back in a
+     * new request, until Claude answers without a tool. [StreamEvent.Done] carries the turns in between.
+     */
+    fun stream(
+        modelId: String,
+        effort: Effort,
+        history: List<ChatMessage>,
+        userName: String = "",
+        tools: ChatTools = ChatTools(readLinks = false),
+    ): Flow<StreamEvent> = callbackFlow {
+        val messages = history.flatMap(::toParams).toMutableList()
+        // Old tool turns need the tool definitions, even when the tool is off now.
+        val definitions = tools.definitions.ifEmpty {
+            if (history.any { it.apiTurns.isNotEmpty() && !it.stopped }) ChatTools(readLinks = true).definitions else emptyList()
+        }
+        val turns = mutableListOf<ApiTurn>()
+        val cancelled = AtomicBoolean(false)
+        val current = AtomicReference<AutoCloseable?>(null)
 
-        val response = client.messages().createStreaming(params)
         val worker = thread(name = "claude-stream") {
             try {
-                val accumulator = MessageAccumulator.create()
-                response.stream().forEach { event ->
-                    accumulator.accumulate(event)
-                    event.contentBlockDelta().ifPresent { deltaEvent ->
-                        val delta = deltaEvent.delta()
-                        delta.text().ifPresent { trySend(StreamEvent.TextDelta(it.text())) }
-                        delta.thinking().ifPresent { trySend(StreamEvent.ThinkingDelta(it.thinking())) }
+                var wroteText = false
+                var wroteThinking = false
+                for (round in 0..MAX_TOOL_ROUNDS) {
+                    val params = MessageCreateParams.builder()
+                        .model(wire(modelId))
+                        .maxTokens(64_000L)
+                        .system(systemPrompt(modelId, userName, tools))
+                        .messages(messages)
+                        .thinking(ThinkingConfigAdaptive.builder().display(ThinkingConfigAdaptive.Display.SUMMARIZED).build())
+                        .outputConfig(OutputConfig.builder().effort(OutputConfig.Effort.of(effort.apiValue)).build())
+                        .cacheControl(CacheControlEphemeral.builder().build())
+                        .apply {
+                            definitions.forEach { addTool(it) }
+                            // On the last round, or when the tools are off, Claude must answer with what it has.
+                            if (definitions.isNotEmpty() && (round == MAX_TOOL_ROUNDS || tools.isEmpty)) {
+                                toolChoice(ToolChoiceNone.builder().build())
+                            }
+                        }
+                        .build()
+
+                    val response = client.messages().createStreaming(params)
+                    current.set(response)
+                    if (cancelled.get()) { response.close(); return@thread }
+                    val accumulator = MessageAccumulator.create()
+                    var roundText = false
+                    var roundThinking = false
+                    response.use { r ->
+                        r.stream().forEach { event ->
+                            accumulator.accumulate(event)
+                            event.contentBlockDelta().ifPresent { deltaEvent ->
+                                val delta = deltaEvent.delta()
+                                delta.text().ifPresent {
+                                    // Text from a new round starts a new paragraph.
+                                    if (!roundText) { roundText = true; if (wroteText) trySend(StreamEvent.TextDelta("\n\n")) }
+                                    wroteText = true
+                                    trySend(StreamEvent.TextDelta(it.text()))
+                                }
+                                delta.thinking().ifPresent {
+                                    if (!roundThinking) { roundThinking = true; if (wroteThinking) trySend(StreamEvent.ThinkingDelta("\n\n")) }
+                                    wroteThinking = true
+                                    trySend(StreamEvent.ThinkingDelta(it.thinking()))
+                                }
+                            }
+                        }
                     }
+                    val message = accumulator.message()
+                    val uses = message.content().mapNotNull { it.toolUse().orElse(null) }
+                    // A reply cut off by max_tokens can hold a half-written tool call. Do not run it.
+                    if (message.stopReason().orElse(null) != StopReason.TOOL_USE || uses.isEmpty()) {
+                        trySend(StreamEvent.Done(message, turns.toList()))
+                        close()
+                        return@thread
+                    }
+
+                    val results = uses.map { use ->
+                        val input = jsonMapper().writeValueAsString(use._input())
+                        val label = tools.label(use.name(), input)
+                        trySend(StreamEvent.ToolStarted(use.id(), use.name(), label.running))
+                        val out = tools.run(use.name(), input)
+                        if (cancelled.get()) return@thread
+                        val detail = if (out.isError) out.blocks.firstOrNull()?.text()?.orElse(null)?.text() else null
+                        trySend(StreamEvent.ToolFinished(use.id(), if (out.isError) label.failed else label.done, out.isError, detail))
+                        ContentBlockParam.ofToolResult(
+                            ToolResultBlockParam.builder()
+                                .toolUseId(use.id())
+                                .contentOfBlocks(out.blocks)
+                                .apply { if (out.isError) isError(true) }
+                                .build()
+                        )
+                    }
+                    val assistant = message.content().map { it.toParam() }
+                    turns += ApiTurn(Role.ASSISTANT, jsonMapper().writeValueAsString(assistant))
+                    turns += ApiTurn(Role.USER, jsonMapper().writeValueAsString(results))
+                    messages += MessageParam.builder().role(MessageParam.Role.ASSISTANT).contentOfBlockParams(assistant).build()
+                    messages += MessageParam.builder().role(MessageParam.Role.USER).contentOfBlockParams(results).build()
                 }
-                trySend(StreamEvent.Done(accumulator.message()))
-                close()
             } catch (e: Throwable) {
-                close(e)
+                if (!cancelled.get()) close(e)
             }
         }
         awaitClose {
-            response.close()
+            cancelled.set(true)
+            runCatching { current.get()?.close() }
             worker.interrupt()
         }
     }.flowOn(Dispatchers.IO)
@@ -151,18 +231,21 @@ class ClaudeService(private val credentials: Credentials) {
      * Bedrock sends no system prompt of its own, so the model does not know its name unless the app tells it.
      * The chat can switch models, so earlier replies may come from another model.
      */
-    private fun systemPrompt(modelId: String, userName: String): String {
+    private fun systemPrompt(modelId: String, userName: String, tools: ChatTools): String {
         val today = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy"))
         val model = modelById(modelId).name
         return "You are Claude $model, an AI assistant made by Anthropic, chatting with the user in a mobile app " +
             "through Amazon Bedrock. If asked which model you are, say Claude $model. The user can switch models " +
             "during a chat, so earlier replies in this conversation may come from another Claude model. " +
             (if (userName.isNotBlank()) "The user's name is $userName. " else "") +
+            tools.promptNote +
             "The current date is $today. Format replies with Markdown when it helps readability. " +
             "Keep the layout mobile-friendly: short paragraphs, and tables only with few columns."
     }
 
     companion object {
+        /** Tool rounds in one reply. After this, Claude must answer without tools. */
+        private const val MAX_TOOL_ROUNDS = 8
         private val blockListType = object : TypeReference<List<ContentBlockParam>>() {}
         private val MODEL_MISSING = Regex("""model '(?:(?:global|us|eu|jp|au|apac)\.)?([^']+)' does not exist""")
 
@@ -172,6 +255,22 @@ class ClaudeService(private val credentials: Credentials) {
 
         fun isRefusal(message: Message): Boolean =
             message.stopReason().map { it == StopReason.REFUSAL }.orElse(false)
+
+        /** The message as API turns. A reply that used tools has its tool turns before the final content. */
+        fun toParams(message: ChatMessage): List<MessageParam> {
+            if (message.role == Role.ASSISTANT && !message.stopped && message.apiContent != null && message.apiTurns.isNotEmpty()) {
+                val turns = message.apiTurns.map { turn ->
+                    val blocks = runCatching { jsonMapper().readValue(turn.content, blockListType) }.getOrNull()
+                        ?: return listOf(toParam(message))
+                    MessageParam.builder()
+                        .role(if (turn.role == Role.USER) MessageParam.Role.USER else MessageParam.Role.ASSISTANT)
+                        .contentOfBlockParams(blocks)
+                        .build()
+                }
+                return turns + toParam(message)
+            }
+            return listOf(toParam(message))
+        }
 
         fun toParam(message: ChatMessage): MessageParam = when (message.role) {
             Role.USER -> MessageParam.builder()

@@ -118,6 +118,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean(KEY_CHAT_NOTIFICATIONS, false)
         set(value) = prefs.edit().putBoolean(KEY_CHAT_NOTIFICATIONS, value).apply()
 
+    /** Let Claude read links (web pages and PDFs). The phone downloads them. */
+    var readLinks: Boolean
+        get() = prefs.getBoolean(KEY_READ_LINKS, true)
+        set(value) = prefs.edit().putBoolean(KEY_READ_LINKS, value).apply()
+
     /** True after the "Get notified when Claude responds" card was answered or closed. */
     var askedChatNotifications: Boolean
         get() = prefs.getBoolean(KEY_ASKED_CHAT_NOTIFICATIONS, false)
@@ -167,6 +172,7 @@ class Settings(context: Context) {
         const val KEY_ASKED_NAME = "asked_name"
         const val KEY_PC_NOTIFICATIONS = "pc_notifications"
         const val KEY_CHAT_NOTIFICATIONS = "chat_notifications"
+        const val KEY_READ_LINKS = "read_links"
         const val KEY_ASKED_CHAT_NOTIFICATIONS = "asked_chat_notifications"
         const val KEY_BRIDGE_URL = "bridge_url"
         const val KEY_BRIDGE_TOKEN = "bridge_token"

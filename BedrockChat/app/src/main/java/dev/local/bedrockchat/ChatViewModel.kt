@@ -20,6 +20,9 @@ import dev.local.bedrockchat.data.Effort
 import dev.local.bedrockchat.data.Routing
 import dev.local.bedrockchat.data.Role
 import dev.local.bedrockchat.data.StreamEvent
+import dev.local.bedrockchat.data.ChatTools
+import dev.local.bedrockchat.data.ToolCall
+import dev.local.bedrockchat.data.ToolStatus
 import dev.local.bedrockchat.data.TITLE_MODEL_ID
 import dev.local.bedrockchat.data.modelById
 import kotlinx.coroutines.Dispatchers
@@ -192,6 +195,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val _chatNotifications = MutableStateFlow(settings.chatNotifications)
     /** "Notify when Claude responds": keeps a reply running in the background and notifies when it finishes. */
     val chatNotifications: StateFlow<Boolean> = _chatNotifications.asStateFlow()
+
+    private val _readLinks = MutableStateFlow(settings.readLinks)
+    /** "Read links": Claude can open web pages and PDFs, downloaded by the phone. */
+    val readLinks: StateFlow<Boolean> = _readLinks.asStateFlow()
+    fun setReadLinks(on: Boolean) { settings.readLinks = on; _readLinks.value = on }
 
     private val _offerChatNotifications = MutableStateFlow(!settings.askedChatNotifications && !settings.chatNotifications)
     /** True until the "Get notified when Claude responds" card is answered or closed. */
@@ -396,7 +404,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             try {
-                service.stream(s.modelId, s.effort, history, settings.displayName).collect { event ->
+                service.stream(s.modelId, s.effort, history, settings.displayName, ChatTools(settings.readLinks)).collect { event ->
                     when (event) {
                         is StreamEvent.ThinkingDelta -> {
                             if (thinkingStart == 0L) thinkingStart = System.currentTimeMillis()
@@ -411,6 +419,19 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                             _state.update { it.copy(waiting = false) }
                             push()
                         }
+                        is StreamEvent.ToolStarted -> {
+                            _state.update { it.copy(waiting = false) }
+                            push(force = true)
+                            updateMessage(reply.id) {
+                                it.copy(toolCalls = it.toolCalls + ToolCall(event.id, event.name, event.label, ToolStatus.RUNNING))
+                            }
+                        }
+                        is StreamEvent.ToolFinished -> updateMessage(reply.id) {
+                            it.copy(toolCalls = it.toolCalls.map { call ->
+                                if (call.id != event.id) call
+                                else call.copy(label = event.label, status = if (event.failed) ToolStatus.FAILED else ToolStatus.DONE, detail = event.detail)
+                            })
+                        }
                         is StreamEvent.Done -> {
                             val refusal = ClaudeService.isRefusal(event.message)
                             final = currentMessage(reply.id)?.copy(
@@ -418,6 +439,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                                 thinking = thinking.toString(),
                                 thinkingMillis = thinkingMillis,
                                 apiContent = ClaudeService.encodeContent(event.message),
+                                apiTurns = event.turns,
                                 error = if (refusal) "Claude declined to respond to this request. Try rephrasing it, or pick another model." else null,
                             )
                         }
@@ -428,12 +450,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 failed = final?.error != null
             } catch (e: kotlinx.coroutines.CancellationException) {
                 updateMessage(reply.id) {
-                    it.copy(text = text.toString(), thinking = thinking.toString(), thinkingMillis = thinkingMillis, stopped = true)
+                    it.copy(text = text.toString(), thinking = thinking.toString(), thinkingMillis = thinkingMillis, stopped = true).endTools()
                 }
                 throw e
             } catch (e: Exception) {
                 updateMessage(reply.id) {
-                    it.copy(text = text.toString(), thinking = thinking.toString(), stopped = true, error = ClaudeService.rawError(e))
+                    it.copy(text = text.toString(), thinking = thinking.toString(), stopped = true, error = ClaudeService.rawError(e)).endTools()
                 }
                 outcome = text.toString()
                 failed = true
@@ -446,6 +468,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+
+    /** Marks tool calls that were still running when the reply stopped. */
+    private fun ChatMessage.endTools() = copy(toolCalls = toolCalls.map {
+        if (it.status == ToolStatus.RUNNING) it.copy(label = it.label.removeSuffix("…"), status = ToolStatus.FAILED, detail = "Stopped") else it
+    })
 
     private fun currentMessage(id: String) = _state.value.conversation.messages.firstOrNull { it.id == id }
 

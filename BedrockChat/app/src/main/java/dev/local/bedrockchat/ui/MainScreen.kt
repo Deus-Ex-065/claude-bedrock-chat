@@ -72,6 +72,7 @@ fun MainScreen(vm: ChatViewModel) {
     val offerNotifications by vm.offerChatNotifications.collectAsStateWithLifecycle()
     val chatNotifications by vm.chatNotifications.collectAsStateWithLifecycle()
     val haptics by vm.haptics.collectAsStateWithLifecycle()
+    val readLinks by vm.readLinks.collectAsStateWithLifecycle()
     val credentials by vm.credentials.collectAsStateWithLifecycle()
     val colorMode by vm.colorMode.collectAsStateWithLifecycle()
     val notice by vm.notices.collectAsStateWithLifecycle()
@@ -175,6 +176,8 @@ fun MainScreen(vm: ChatViewModel) {
                     colorMode = colorMode,
                     haptics = haptics,
                     chatNotifications = chatNotifications,
+                    readLinks = readLinks,
+                    onReadLinks = vm::setReadLinks,
                     onChatNotifications = vm::setChatNotifications,
                     modelId = state.modelId,
                     effort = state.effort,

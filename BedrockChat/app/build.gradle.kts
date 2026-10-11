@@ -13,8 +13,8 @@ android {
         applicationId = "dev.local.bedrockchat"
         minSdk = 26
         targetSdk = 37
-        versionCode = 23
-        versionName = "0.7.1"
+        versionCode = 24
+        versionName = "0.8.0"
     }
 
     buildTypes {
@@ -68,6 +68,7 @@ dependencies {
     implementation("com.anthropic:anthropic-java-bedrock:2.71.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("org.commonmark:commonmark:0.30.0")
+    implementation("org.jsoup:jsoup:1.21.1")
     implementation("org.commonmark:commonmark-ext-gfm-tables:0.30.0")
     implementation("org.commonmark:commonmark-ext-gfm-strikethrough:0.30.0")
     implementation("org.commonmark:commonmark-ext-task-list-items:0.30.0")
